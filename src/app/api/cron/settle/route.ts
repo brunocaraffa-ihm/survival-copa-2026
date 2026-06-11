@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { brtDateString, datesInclusive, earliestKickoff, isPastDeadline } from '@/lib/tz'
+import { matchDayKey, datesInclusive, earliestKickoff, isPastDeadline } from '@/lib/tz'
 import { settleDay, computeStanding, STARTING_LIVES, type FinishedMatch } from '@/lib/rules'
 import { fetchWorldCupMatches } from '@/lib/football-data'
 import {
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
         await upsertMatch({
           externalId: m.externalId,
           utcKickoff: m.utcKickoff,
-          matchDate: brtDateString(m.utcKickoff),
+          matchDate: matchDayKey(m.utcKickoff),
           stage: 'group',
           homeTeam: m.homeTeam,
           awayTeam: m.awayTeam,
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
   // unique constraint and the in-memory date-set). A participant is out at 0 lives.
   const participants = await listParticipants()
   const now = new Date()
-  const today = brtDateString(now)
+  const today = matchDayKey(now)
 
   // loss events per participant (date + reason), seeded from existing rows
   const lossEvents = new Map<string, { date: string; reason: 'lost' | 'no_pick' }[]>()

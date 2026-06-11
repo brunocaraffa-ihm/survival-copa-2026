@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { fetchWorldCupMatches } from '@/lib/football-data'
-import { brtDateString } from '@/lib/tz'
+import { matchDayKey } from '@/lib/tz'
 import { upsertMatch } from '@/db/queries'
 
 async function main() {
@@ -14,7 +14,7 @@ async function main() {
     await upsertMatch({
       externalId: m.externalId,
       utcKickoff: m.utcKickoff,
-      matchDate: brtDateString(m.utcKickoff),
+      matchDate: matchDayKey(m.utcKickoff),
       stage: 'group',
       homeTeam: m.homeTeam,
       awayTeam: m.awayTeam,

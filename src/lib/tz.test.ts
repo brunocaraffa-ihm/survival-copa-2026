@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { brtDateString, earliestKickoff, isPastDeadline, datesInclusive } from './tz'
+import { brtDateString, matchDayKey, earliestKickoff, isPastDeadline, datesInclusive } from './tz'
 
 describe('brtDateString', () => {
   it('returns the calendar date in Brasília time', () => {
@@ -8,6 +8,17 @@ describe('brtDateString', () => {
   })
   it('handles a daytime UTC kickoff', () => {
     expect(brtDateString(new Date('2026-06-11T19:00:00Z'))).toBe('2026-06-11')
+  })
+})
+
+describe('matchDayKey', () => {
+  it('keeps daytime/evening games on their own day', () => {
+    // 2026-06-11T19:00:00Z = 16:00 BRT on the 11th
+    expect(matchDayKey(new Date('2026-06-11T19:00:00Z'))).toBe('2026-06-11')
+  })
+  it('groups small-hours games with the previous day', () => {
+    // 2026-06-14T04:00:00Z = 01:00 BRT on the 14th → belongs to the 13th
+    expect(matchDayKey(new Date('2026-06-14T04:00:00Z'))).toBe('2026-06-13')
   })
 })
 

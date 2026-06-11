@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { currentParticipant } from '@/lib/session'
 import { validatePick } from '@/lib/pick-validation'
-import { brtDateString, earliestKickoff, isPastDeadline } from '@/lib/tz'
+import { matchDayKey, earliestKickoff, isPastDeadline } from '@/lib/tz'
 import {
   getMatchesByDate,
   getTeamsUsedBy,
@@ -12,10 +12,11 @@ import {
   getMatchesFrom,
   getPicksFrom,
   getPicksByDate,
+  getAllMatchDays,
 } from '@/db/queries'
 
 function todayBrt(): string {
-  return brtDateString(new Date())
+  return matchDayKey(new Date())
 }
 
 /**
@@ -31,6 +32,7 @@ export async function getSchedule() {
   const upcomingMatches = await getMatchesFrom(today)
   const upcomingPicks = await getPicksFrom(today)
   const teamsUsed = await getTeamsUsedBy(me.id)
+  const allDays = await getAllMatchDays()
   const now = new Date()
 
   const byDate = new Map<string, typeof upcomingMatches>()
@@ -54,6 +56,7 @@ export async function getSchedule() {
       ]
       return {
         date,
+        matchDayNumber: allDays.indexOf(date) + 1,
         deadline: deadlineDate?.toISOString() ?? null,
         deadlinePassed,
         matches: dayMatches.map((m) => ({

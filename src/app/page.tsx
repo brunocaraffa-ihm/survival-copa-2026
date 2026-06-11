@@ -97,7 +97,9 @@ export default async function Dashboard() {
             {schedule.days.map((day) => (
               <li key={day.date} className="rounded border p-3">
                 <div className="mb-1 flex items-center justify-between">
-                  <span className="font-medium">{fmtDay(day.date)}</span>
+                  <span className="font-medium">
+                    Match Day {day.matchDayNumber} <span className="text-xs font-normal text-gray-500">· {fmtDay(day.date)}</span>
+                  </span>
                   <span className="text-xs text-gray-600">
                     {day.deadline ? `fecha ${fmtTime(day.deadline)} (Brasília)` : ''}{' '}
                     {day.deadlinePassed ? '🔒' : '🟢'}
