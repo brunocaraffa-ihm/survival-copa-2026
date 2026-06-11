@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic'
 
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { currentParticipant } from '@/lib/session'
 import { getSchedule } from '@/app/actions/pick-actions'
@@ -76,6 +77,12 @@ export default async function Dashboard() {
 
       <p className="mb-4 text-center text-lg">
         Suas vidas: {hearts(meStanding.lives)} <span className="text-sm text-gray-600">({meStanding.lives}/{STARTING_LIVES})</span>
+      </p>
+
+      <p className="mb-4 text-center">
+        <Link href="/resultados" className="text-sm font-medium text-blue-600 underline">
+          📊 Ver palpites de todos &amp; resultados →
+        </Link>
       </p>
 
       {winnerNames.length > 0 && (

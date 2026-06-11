@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { currentParticipant } from '@/lib/session'
 import { validatePick } from '@/lib/pick-validation'
+import { teamSurvives, type FinishedMatch } from '@/lib/rules'
 import { matchDayKey, earliestKickoff, isPastDeadline } from '@/lib/tz'
 import {
   getMatchesByDate,
@@ -13,6 +14,7 @@ import {
   getPicksFrom,
   getPicksByDate,
   getAllMatchDays,
+  listParticipants,
 } from '@/db/queries'
 
 function todayBrt(): string {
@@ -131,4 +133,72 @@ export async function clearPick(formData: FormData): Promise<void> {
 
   await deletePick(me.id, date)
   revalidatePath('/')
+}
+
+export type PickOutcome = 'survived' | 'eliminated' | 'pending' | 'no_pick'
+
+/**
+ * Results view: for every match day up to today, who picked what and whether
+ * they survived. A day's picks unlock only once its first game has started
+ * (deadline passed) — before that, `rows` is null (locked).
+ */
+export async function getResults() {
+  const me = await currentParticipant()
+  if (!me) return null
+
+  const today = todayBrt()
+  const allMatches = await getMatchesFrom('2026-06-11')
+  const allPicks = await getPicksFrom('2026-06-11')
+  const allDays = await getAllMatchDays()
+  const everyone = await listParticipants()
+  const now = new Date()
+
+  const byDate = new Map<string, typeof allMatches>()
+  for (const m of allMatches) {
+    const arr = byDate.get(m.matchDate) ?? []
+    arr.push(m)
+    byDate.set(m.matchDate, arr)
+  }
+
+  // past + current match days, most recent first
+  const dates = [...byDate.keys()].filter((d) => d <= today).sort((a, b) => (a < b ? 1 : -1))
+
+  const days = dates.map((date) => {
+    const dayMatches = byDate.get(date)!
+    const deadlineDate = earliestKickoff(dayMatches.map((m) => new Date(m.utcKickoff)))
+    const deadlinePassed = deadlineDate ? isPastDeadline(now, deadlineDate) : false
+    const dayPicks = allPicks.filter((p) => p.matchDate === date)
+
+    const rows = !deadlinePassed
+      ? null
+      : everyone.map((p) => {
+          const pick = dayPicks.find((x) => x.participantId === p.id)
+          if (!pick) return { name: p.name, team: null, outcome: 'no_pick' as PickOutcome, matchLabel: null as string | null }
+          const m = dayMatches.find((x) => x.homeTeam === pick.team || x.awayTeam === pick.team)
+          let outcome: PickOutcome = 'pending'
+          let matchLabel: string | null = null
+          if (m && m.status === 'FINISHED' && m.homeScore !== null && m.awayScore !== null) {
+            const fm: FinishedMatch = {
+              homeTeam: m.homeTeam,
+              awayTeam: m.awayTeam,
+              homeScore: m.homeScore,
+              awayScore: m.awayScore,
+              status: 'FINISHED',
+            }
+            outcome = teamSurvives(fm, pick.team) ? 'survived' : 'eliminated'
+            matchLabel = `${m.homeTeam} ${m.homeScore}–${m.awayScore} ${m.awayTeam}`
+          }
+          return { name: p.name, team: pick.team, outcome, matchLabel }
+        })
+
+    return {
+      date,
+      matchDayNumber: allDays.indexOf(date) + 1,
+      deadline: deadlineDate?.toISOString() ?? null,
+      deadlinePassed,
+      rows,
+    }
+  })
+
+  return { days }
 }
