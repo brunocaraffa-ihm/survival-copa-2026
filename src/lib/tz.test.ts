@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { brtDateString, earliestKickoff, isPastDeadline } from './tz'
+import { brtDateString, earliestKickoff, isPastDeadline, datesInclusive } from './tz'
 
 describe('brtDateString', () => {
   it('returns the calendar date in Brasília time', () => {
@@ -32,5 +32,14 @@ describe('isPastDeadline', () => {
   it('is false before the deadline', () => {
     const dl = new Date('2026-06-11T19:00:00Z')
     expect(isPastDeadline(new Date('2026-06-11T18:59:59Z'), dl)).toBe(false)
+  })
+})
+
+describe('datesInclusive', () => {
+  it('lists calendar dates inclusively', () => {
+    expect(datesInclusive('2026-06-11', '2026-06-13')).toEqual(['2026-06-11', '2026-06-12', '2026-06-13'])
+  })
+  it('returns a single date when start equals end', () => {
+    expect(datesInclusive('2026-07-19', '2026-07-19')).toEqual(['2026-07-19'])
   })
 })

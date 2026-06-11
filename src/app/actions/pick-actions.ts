@@ -43,7 +43,7 @@ export async function submitPick(_prev: unknown, formData: FormData): Promise<{ 
   const dayMatches = await getMatchesByDate(date)
   const deadline = earliestKickoff(dayMatches.map((m) => new Date(m.utcKickoff)))
   const deadlinePassed = deadline ? isPastDeadline(new Date(), deadline) : true
-  const teamsPlayingToday = dayMatches.flatMap((m) => [m.homeTeam, m.awayTeam])
+  const teamsPlayingToday = dayMatches.flatMap((m) => [m.homeTeam, m.awayTeam]).filter((t) => t !== 'TBD')
   const teamsAlreadyUsed = await getTeamsUsedBy(me.id)
 
   const result = validatePick({

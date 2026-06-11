@@ -3,7 +3,8 @@ export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import { currentParticipant } from '@/lib/session'
 import { getTodayBoard } from '@/app/actions/pick-actions'
-import { listParticipants } from '@/db/queries'
+import { listParticipants, countMatches } from '@/db/queries'
+import { decideWinners } from '@/lib/rules'
 import { PickForm } from '@/app/_components/PickForm'
 import { logout } from '@/app/actions/auth-actions'
 
@@ -13,12 +14,27 @@ export default async function Dashboard() {
   const board = await getTodayBoard()
   const everyone = await listParticipants()
 
+  const counts = await countMatches()
+  const aliveCount = everyone.filter((p) => p.status === 'alive').length
+  const tournamentOver = (counts.total > 0 && counts.finished === counts.total) || (everyone.length > 1 && aliveCount <= 1)
+  const winnerIds = decideWinners(
+    everyone.map((p) => ({ id: p.id, status: p.status, eliminatedDate: p.eliminatedDate })),
+    tournamentOver,
+  )
+  const winnerNames = everyone.filter((p) => winnerIds.includes(p.id)).map((p) => p.name)
+
   return (
     <main className="mx-auto max-w-2xl p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Survival Copa 2026</h1>
         <form action={logout}><button className="text-sm underline">sair ({me.name})</button></form>
       </div>
+
+      {winnerNames.length > 0 && (
+        <p className="mb-6 rounded bg-green-100 p-3 text-center font-semibold">
+          🏆 {winnerNames.length > 1 ? 'Campeões' : 'Campeão'}: {winnerNames.join(', ')}
+        </p>
+      )}
 
       {me.status === 'eliminated' ? (
         <p className="mb-6 rounded bg-red-100 p-3">Você foi eliminado em {me.eliminatedDate} ({me.eliminatedReason}).</p>

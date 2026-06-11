@@ -15,7 +15,7 @@ export async function login(_prev: unknown, formData: FormData): Promise<{ error
   }
   const token = await createSession(participant.id, process.env.SESSION_SECRET!)
   const store = await cookies()
-  store.set(SESSION_COOKIE, token, { httpOnly: true, secure: true, sameSite: 'lax', maxAge: 60 * 60 * 24 * 60, path: '/' })
+  store.set(SESSION_COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 60 * 60 * 24 * 60, path: '/' })
   redirect('/')
 }
 

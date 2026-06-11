@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from './client'
 import { participants, matches, picks } from './schema'
 
@@ -27,15 +27,6 @@ export async function getTeamsUsedBy(participantId: string): Promise<string[]> {
 
 export async function getPicksByDate(matchDate: string) {
   return db.select().from(picks).where(eq(picks.matchDate, matchDate))
-}
-
-export async function getPickFor(participantId: string, matchDate: string) {
-  const rows = await db
-    .select()
-    .from(picks)
-    .where(and(eq(picks.participantId, participantId), eq(picks.matchDate, matchDate)))
-    .limit(1)
-  return rows[0] ?? null
 }
 
 /** Upsert a pick (replace the participant's pick for that day). */
@@ -76,7 +67,7 @@ export async function setMatchResult(matchId: string, homeScore: number, awaySco
   await db.update(matches).set({ homeScore, awayScore, status: 'FINISHED' }).where(eq(matches.id, matchId))
 }
 
-export async function getMatchesByIds(ids: string[]) {
-  if (ids.length === 0) return []
-  return db.select().from(matches).where(inArray(matches.id, ids))
+export async function countMatches(): Promise<{ total: number; finished: number }> {
+  const rows = await db.select({ status: matches.status }).from(matches)
+  return { total: rows.length, finished: rows.filter((r) => r.status === 'FINISHED').length }
 }
