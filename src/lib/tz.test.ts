@@ -1,0 +1,36 @@
+import { describe, it, expect } from 'vitest'
+import { brtDateString, earliestKickoff, isPastDeadline } from './tz'
+
+describe('brtDateString', () => {
+  it('returns the calendar date in Brasília time', () => {
+    // 2026-06-12 00:30 UTC is still 2026-06-11 21:30 in Brasília (UTC-3)
+    expect(brtDateString(new Date('2026-06-12T00:30:00Z'))).toBe('2026-06-11')
+  })
+  it('handles a daytime UTC kickoff', () => {
+    expect(brtDateString(new Date('2026-06-11T19:00:00Z'))).toBe('2026-06-11')
+  })
+})
+
+describe('earliestKickoff', () => {
+  it('returns the earliest of several kickoffs', () => {
+    const a = new Date('2026-06-11T22:00:00Z')
+    const b = new Date('2026-06-11T19:00:00Z')
+    const c = new Date('2026-06-11T20:30:00Z')
+    expect(earliestKickoff([a, b, c])?.toISOString()).toBe(b.toISOString())
+  })
+  it('returns null for an empty list', () => {
+    expect(earliestKickoff([])).toBeNull()
+  })
+})
+
+describe('isPastDeadline', () => {
+  it('is true when now is at or after the deadline', () => {
+    const dl = new Date('2026-06-11T19:00:00Z')
+    expect(isPastDeadline(new Date('2026-06-11T19:00:00Z'), dl)).toBe(true)
+    expect(isPastDeadline(new Date('2026-06-11T19:00:01Z'), dl)).toBe(true)
+  })
+  it('is false before the deadline', () => {
+    const dl = new Date('2026-06-11T19:00:00Z')
+    expect(isPastDeadline(new Date('2026-06-11T18:59:59Z'), dl)).toBe(false)
+  })
+})
