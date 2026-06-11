@@ -44,10 +44,14 @@ export async function deletePick(participantId: string, matchDate: string) {
   await db.delete(picks).where(and(eq(picks.participantId, participantId), eq(picks.matchDate, matchDate)))
 }
 
-/** Upsert a pick (replace the participant's pick for that day). */
+/** Upsert a pick (replace the participant's pick for that day). Atomic: if the
+ *  insert violates the no-repeat-team constraint, the delete rolls back so the
+ *  participant keeps their previous pick for the day. */
 export async function upsertPick(input: { participantId: string; matchDate: string; team: string; matchId: string }) {
-  await db.delete(picks).where(and(eq(picks.participantId, input.participantId), eq(picks.matchDate, input.matchDate)))
-  await db.insert(picks).values(input)
+  await db.transaction(async (tx) => {
+    await tx.delete(picks).where(and(eq(picks.participantId, input.participantId), eq(picks.matchDate, input.matchDate)))
+    await tx.insert(picks).values(input)
+  })
 }
 
 export async function eliminateParticipant(id: string, date: string, reason: 'lost' | 'no_pick') {

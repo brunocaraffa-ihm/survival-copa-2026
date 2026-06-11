@@ -11,6 +11,7 @@ import {
   deletePick,
   getMatchesFrom,
   getPicksFrom,
+  getPicksByDate,
 } from '@/db/queries'
 
 function todayBrt(): string {
@@ -82,7 +83,11 @@ export async function submitPick(_prev: unknown, formData: FormData): Promise<{ 
   const deadline = earliestKickoff(dayMatches.map((m) => new Date(m.utcKickoff)))
   const deadlinePassed = deadline ? isPastDeadline(new Date(), deadline) : true
   const teamsPlayingThatDay = dayMatches.flatMap((m) => [m.homeTeam, m.awayTeam]).filter((t) => t !== 'TBD')
-  const teamsAlreadyUsed = await getTeamsUsedBy(me.id)
+
+  // Exclude the team currently picked for THIS day — replacing it is allowed.
+  // Every other day's team stays blocked (no reusing a team across the tournament).
+  const myPickThisDay = (await getPicksByDate(date)).find((p) => p.participantId === me.id)?.team ?? null
+  const teamsAlreadyUsed = (await getTeamsUsedBy(me.id)).filter((t) => t !== myPickThisDay)
 
   const result = validatePick({
     isAlive: me.status === 'alive',
@@ -94,7 +99,15 @@ export async function submitPick(_prev: unknown, formData: FormData): Promise<{ 
   if (!result.ok) return { error: result.error }
 
   const match = dayMatches.find((m) => m.homeTeam === chosenTeam || m.awayTeam === chosenTeam)!
-  await upsertPick({ participantId: me.id, matchDate: date, team: chosenTeam, matchId: match.id })
+  try {
+    await upsertPick({ participantId: me.id, matchDate: date, team: chosenTeam, matchId: match.id })
+  } catch (err) {
+    // DB-level guard: unique (participant, team) violation = team already used elsewhere.
+    if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === '23505') {
+      return { error: 'team_already_used' }
+    }
+    throw err
+  }
   revalidatePath('/')
   return { ok: true }
 }
