@@ -22,6 +22,7 @@ export default async function Dashboard() {
     tournamentOver,
   )
   const winnerNames = everyone.filter((p) => winnerIds.includes(p.id)).map((p) => p.name)
+  const pot = everyone.length * 50
 
   return (
     <main className="mx-auto max-w-2xl p-6">
@@ -29,6 +30,10 @@ export default async function Dashboard() {
         <h1 className="text-2xl font-bold">Survival Copa 2026</h1>
         <form action={logout}><button className="text-sm underline">sair ({me.name})</button></form>
       </div>
+
+      <p className="mb-6 rounded bg-amber-100 p-3 text-center font-semibold">
+        💰 Prêmio: R$ {pot} <span className="font-normal text-sm text-amber-800">(R$ 50 de cada · {everyone.length} participantes · leva quem sobreviver mais)</span>
+      </p>
 
       {winnerNames.length > 0 && (
         <p className="mb-6 rounded bg-green-100 p-3 text-center font-semibold">
@@ -42,7 +47,7 @@ export default async function Dashboard() {
         <section className="mb-6">
           <h2 className="mb-2 font-semibold">Palpite de hoje ({board.date})</h2>
           <p className="mb-2 text-sm text-gray-600">
-            Deadline: {board.deadline ? new Date(board.deadline).toLocaleString('pt-BR') : '—'}
+            Deadline: {board.deadline ? new Date(board.deadline).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' (Brasília)' : '—'}
           </p>
           {board.deadlinePassed ? (
             <p className="text-sm">Palpites travados.</p>
