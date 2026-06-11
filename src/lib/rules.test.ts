@@ -60,6 +60,10 @@ describe('settleDay', () => {
     const out = settleDay({ ...base, hasMatches: false, picks: [] })
     expect(out.find((e) => e.reason === 'no_pick')).toBeUndefined()
   })
+  it('does not eliminate no_pick before the deadline has passed', () => {
+    const out = settleDay({ ...base, deadlinePassed: false, picks: [] })
+    expect(out.find((e) => e.reason === 'no_pick')).toBeUndefined()
+  })
   it('leaves a pick pending when its match is not finished yet', () => {
     const out = settleDay({
       ...base,
