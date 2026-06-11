@@ -2,6 +2,7 @@ export type ApiMatch = {
   id: number
   utcDate: string
   status: string
+  stage: string
   homeTeam: { name: string | null }
   awayTeam: { name: string | null }
   score: {
@@ -15,6 +16,8 @@ export type MappedMatch = {
   externalId: string
   utcKickoff: Date
   status: 'SCHEDULED' | 'IN_PLAY' | 'FINISHED'
+  /** Competition stage, e.g. GROUP_STAGE, LAST_32, FINAL. */
+  stage: string
   homeTeam: string
   awayTeam: string
   /** Regulation/ET score, penalties excluded. Null until finished. */
@@ -35,6 +38,7 @@ export function mapApiMatch(m: ApiMatch): MappedMatch {
     externalId: String(m.id),
     utcKickoff: new Date(m.utcDate),
     status,
+    stage: m.stage,
     homeTeam: m.homeTeam.name ?? 'TBD',
     awayTeam: m.awayTeam.name ?? 'TBD',
     homeScore: status === 'FINISHED' ? m.score.fullTime.home : null,

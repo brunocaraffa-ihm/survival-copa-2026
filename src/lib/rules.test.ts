@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { teamSurvives, settleDay, decideWinners, computeStanding } from './rules'
+import { teamSurvives, settleDay, decideWinners, computeStanding, phaseOf } from './rules'
 import type { FinishedMatch, SettleInput } from './rules'
 
 const match = (h: string, a: string, hs: number, as: number): FinishedMatch => ({
@@ -105,6 +105,17 @@ describe('decideWinners', () => {
         false,
       ).sort(),
     ).toEqual(['a', 'b'])
+  })
+})
+
+describe('phaseOf', () => {
+  it('group stage is the group phase', () => {
+    expect(phaseOf('GROUP_STAGE')).toBe('group')
+  })
+  it('every knockout stage is the knockout phase', () => {
+    expect(phaseOf('LAST_32')).toBe('knockout')
+    expect(phaseOf('LAST_16')).toBe('knockout')
+    expect(phaseOf('FINAL')).toBe('knockout')
   })
 })
 

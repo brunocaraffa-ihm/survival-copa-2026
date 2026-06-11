@@ -11,18 +11,21 @@ const ERROR_PT: Record<string, string> = {
   invalid_date: 'Data inválida.',
 }
 
+type Pickable = { team: string; phase: 'group' | 'knockout' }
+
 export function DayPickForm({
   date,
-  pickableTeams,
-  teamsUsed,
+  pickable,
+  teamsUsedByPhase,
   currentPick,
 }: {
   date: string
-  pickableTeams: string[]
-  teamsUsed: string[]
+  pickable: Pickable[]
+  teamsUsedByPhase: { group: string[]; knockout: string[] }
   currentPick: string | null
 }) {
   const [state, formAction, pending] = useActionState(submitPick, {} as { error?: string; ok?: boolean })
+  const isUsed = (p: Pickable) => teamsUsedByPhase[p.phase].includes(p.team)
 
   return (
     <div className="flex flex-col gap-1">
@@ -32,10 +35,10 @@ export function DayPickForm({
           <option value="" disabled>
             escolha um time…
           </option>
-          {pickableTeams.map((t) => (
-            <option key={t} value={t} disabled={teamsUsed.includes(t) && t !== currentPick}>
-              {t}
-              {teamsUsed.includes(t) ? ' (já usado)' : ''}
+          {pickable.map((p) => (
+            <option key={p.team} value={p.team} disabled={isUsed(p) && p.team !== currentPick}>
+              {p.team}
+              {isUsed(p) ? ' (já usado)' : ''}
             </option>
           ))}
         </select>

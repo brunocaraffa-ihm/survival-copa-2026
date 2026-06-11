@@ -20,9 +20,9 @@ export async function getMatchesByDate(matchDate: string) {
   return db.select().from(matches).where(eq(matches.matchDate, matchDate))
 }
 
-export async function getTeamsUsedBy(participantId: string): Promise<string[]> {
-  const rows = await db.select({ team: picks.team }).from(picks).where(eq(picks.participantId, participantId))
-  return rows.map((r) => r.team)
+/** Teams a participant has already used, each with the phase it was used in. */
+export async function getUsedTeamPhases(participantId: string): Promise<{ team: string; phase: 'group' | 'knockout' }[]> {
+  return db.select({ team: picks.team, phase: picks.phase }).from(picks).where(eq(picks.participantId, participantId))
 }
 
 export async function getPicksByDate(matchDate: string) {
@@ -53,7 +53,13 @@ export async function deletePick(participantId: string, matchDate: string) {
 /** Upsert a pick (replace the participant's pick for that day). Atomic: if the
  *  insert violates the no-repeat-team constraint, the delete rolls back so the
  *  participant keeps their previous pick for the day. */
-export async function upsertPick(input: { participantId: string; matchDate: string; team: string; matchId: string }) {
+export async function upsertPick(input: {
+  participantId: string
+  matchDate: string
+  team: string
+  matchId: string
+  phase: 'group' | 'knockout'
+}) {
   await db.transaction(async (tx) => {
     await tx.delete(picks).where(and(eq(picks.participantId, input.participantId), eq(picks.matchDate, input.matchDate)))
     await tx.insert(picks).values(input)

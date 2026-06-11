@@ -33,11 +33,14 @@ export const picks = pgTable(
     matchDate: date('match_date').notNull(),
     team: text('team').notNull(),
     matchId: uuid('match_id').notNull().references(() => matches.id),
+    // 'group' | 'knockout' — no-repeat-team is scoped to the phase, so teams
+    // reset when the knockout stage begins.
+    phase: text('phase', { enum: ['group', 'knockout'] }).notNull().default('group'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     onePerDay: unique('one_pick_per_day').on(t.participantId, t.matchDate),
-    noRepeatTeam: unique('no_repeat_team').on(t.participantId, t.team),
+    noRepeatTeamPerPhase: unique('no_repeat_team_phase').on(t.participantId, t.team, t.phase),
   }),
 )
 

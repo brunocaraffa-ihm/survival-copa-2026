@@ -3,11 +3,11 @@
 import { revalidatePath } from 'next/cache'
 import { currentParticipant } from '@/lib/session'
 import { validatePick } from '@/lib/pick-validation'
-import { teamSurvives, type FinishedMatch } from '@/lib/rules'
+import { teamSurvives, phaseOf, type FinishedMatch } from '@/lib/rules'
 import { matchDayKey, earliestKickoff, isPastDeadline } from '@/lib/tz'
 import {
   getMatchesByDate,
-  getTeamsUsedBy,
+  getUsedTeamPhases,
   upsertPick,
   deletePick,
   getMatchesFrom,
@@ -33,7 +33,11 @@ export async function getSchedule() {
   const today = todayBrt()
   const upcomingMatches = await getMatchesFrom(today)
   const upcomingPicks = await getPicksFrom(today)
-  const teamsUsed = await getTeamsUsedBy(me.id)
+  const usedTeamPhases = await getUsedTeamPhases(me.id)
+  const teamsUsedByPhase = {
+    group: usedTeamPhases.filter((u) => u.phase === 'group').map((u) => u.team),
+    knockout: usedTeamPhases.filter((u) => u.phase === 'knockout').map((u) => u.team),
+  }
   const allDays = await getAllMatchDays()
   const now = new Date()
 
@@ -53,9 +57,14 @@ export async function getSchedule() {
       const myPick = dayPicks.find((p) => p.participantId === me.id)?.team ?? null
       // visibility: others' picks only after this day's deadline
       const visiblePicks = deadlinePassed ? dayPicks : dayPicks.filter((p) => p.participantId === me.id)
-      const pickableTeams = [
-        ...new Set(dayMatches.flatMap((m) => [m.homeTeam, m.awayTeam]).filter((t) => t !== 'TBD')),
-      ]
+      // each pickable team carries its phase, so the UI disables it against the
+      // right per-phase used-teams list (teams reset for the knockouts).
+      const pickableMap = new Map<string, 'group' | 'knockout'>()
+      for (const m of dayMatches) {
+        for (const t of [m.homeTeam, m.awayTeam]) {
+          if (t !== 'TBD') pickableMap.set(t, phaseOf(m.stage))
+        }
+      }
       return {
         date,
         matchDayNumber: allDays.indexOf(date) + 1,
@@ -67,13 +76,13 @@ export async function getSchedule() {
           awayTeam: m.awayTeam,
           utcKickoff: m.utcKickoff.toISOString(),
         })),
-        pickableTeams,
+        pickable: [...pickableMap.entries()].map(([team, phase]) => ({ team, phase })),
         myPick,
         picks: visiblePicks.map((p) => ({ participantId: p.participantId, team: p.team })),
       }
     })
 
-  return { me, teamsUsed, days }
+  return { me, teamsUsedByPhase, days }
 }
 
 export async function submitPick(_prev: unknown, formData: FormData): Promise<{ error?: string; ok?: boolean }> {
@@ -89,10 +98,16 @@ export async function submitPick(_prev: unknown, formData: FormData): Promise<{ 
   const deadlinePassed = deadline ? isPastDeadline(new Date(), deadline) : true
   const teamsPlayingThatDay = dayMatches.flatMap((m) => [m.homeTeam, m.awayTeam]).filter((t) => t !== 'TBD')
 
+  // The chosen team's match decides the phase; no-repeat is scoped to that phase.
+  const match = dayMatches.find((m) => m.homeTeam === chosenTeam || m.awayTeam === chosenTeam)
+  if (!match) return { error: 'not_playing_today' }
+  const phase = phaseOf(match.stage)
+
   // Exclude the team currently picked for THIS day — replacing it is allowed.
-  // Every other day's team stays blocked (no reusing a team across the tournament).
   const myPickThisDay = (await getPicksByDate(date)).find((p) => p.participantId === me.id)?.team ?? null
-  const teamsAlreadyUsed = (await getTeamsUsedBy(me.id)).filter((t) => t !== myPickThisDay)
+  const teamsAlreadyUsed = (await getUsedTeamPhases(me.id))
+    .filter((u) => u.phase === phase && u.team !== myPickThisDay)
+    .map((u) => u.team)
 
   const result = validatePick({
     isAlive: me.status === 'alive',
@@ -103,9 +118,8 @@ export async function submitPick(_prev: unknown, formData: FormData): Promise<{ 
   })
   if (!result.ok) return { error: result.error }
 
-  const match = dayMatches.find((m) => m.homeTeam === chosenTeam || m.awayTeam === chosenTeam)!
   try {
-    await upsertPick({ participantId: me.id, matchDate: date, team: chosenTeam, matchId: match.id })
+    await upsertPick({ participantId: me.id, matchDate: date, team: chosenTeam, matchId: match.id, phase })
   } catch (err) {
     // DB-level guard: unique (participant, team) violation = team already used elsewhere.
     const e = err as { code?: string; cause?: { code?: string }; message?: string }

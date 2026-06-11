@@ -132,11 +132,11 @@ export default async function Dashboard() {
                   <p className="text-sm text-gray-500">
                     {day.myPick ? `Seu palpite: ${day.myPick}` : 'Você está fora.'}
                   </p>
-                ) : day.pickableTeams.length > 0 ? (
+                ) : day.pickable.length > 0 ? (
                   <DayPickForm
                     date={day.date}
-                    pickableTeams={day.pickableTeams}
-                    teamsUsed={schedule.teamsUsed}
+                    pickable={day.pickable}
+                    teamsUsedByPhase={schedule.teamsUsedByPhase}
                     currentPick={day.myPick}
                   />
                 ) : (

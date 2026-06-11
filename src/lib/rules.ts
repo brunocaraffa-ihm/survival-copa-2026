@@ -70,6 +70,14 @@ export function decideWinners(
   return participants.filter((p) => p.eliminatedDate === last).map((p) => p.id)
 }
 
+/** Tournament phase. No-repeat-team resets between phases (group → knockout). */
+export type Phase = 'group' | 'knockout'
+
+/** Map a competition stage (GROUP_STAGE, LAST_32, …, FINAL) to a phase. */
+export function phaseOf(stage: string): Phase {
+  return stage === 'GROUP_STAGE' ? 'group' : 'knockout'
+}
+
 /** Lives each participant starts with. Lose one per failed day; out at zero. */
 export const STARTING_LIVES = 3
 

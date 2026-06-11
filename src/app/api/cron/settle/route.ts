@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
           externalId: m.externalId,
           utcKickoff: m.utcKickoff,
           matchDate: matchDayKey(m.utcKickoff),
-          stage: 'group',
+          stage: m.stage,
           homeTeam: m.homeTeam,
           awayTeam: m.awayTeam,
           homeScore: m.homeScore,
