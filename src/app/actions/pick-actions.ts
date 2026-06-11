@@ -103,7 +103,9 @@ export async function submitPick(_prev: unknown, formData: FormData): Promise<{ 
     await upsertPick({ participantId: me.id, matchDate: date, team: chosenTeam, matchId: match.id })
   } catch (err) {
     // DB-level guard: unique (participant, team) violation = team already used elsewhere.
-    if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === '23505') {
+    const e = err as { code?: string; cause?: { code?: string }; message?: string }
+    const code = e.code ?? e.cause?.code
+    if (code === '23505' || /no_repeat_team|duplicate key/i.test(e.message ?? '')) {
       return { error: 'team_already_used' }
     }
     throw err
