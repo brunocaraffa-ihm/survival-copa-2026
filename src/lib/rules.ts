@@ -69,3 +69,19 @@ export function decideWinners(
   const last = dates.reduce((a, b) => (a >= b ? a : b))
   return participants.filter((p) => p.eliminatedDate === last).map((p) => p.id)
 }
+
+/** Lives each participant starts with. Lose one per failed day; out at zero. */
+export const STARTING_LIVES = 3
+
+/** Derive a participant's standing from the dates on which they lost a life. */
+export function computeStanding(lossDates: string[]): {
+  lives: number
+  eliminated: boolean
+  eliminatedDate: string | null
+} {
+  const lives = Math.max(0, STARTING_LIVES - lossDates.length)
+  const eliminated = lossDates.length >= STARTING_LIVES
+  // the day they hit zero = the STARTING_LIVES-th loss, chronologically
+  const eliminatedDate = eliminated ? [...lossDates].sort()[STARTING_LIVES - 1] : null
+  return { lives, eliminated, eliminatedDate }
+}

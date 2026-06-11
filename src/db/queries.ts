@@ -1,6 +1,6 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, gte } from 'drizzle-orm'
 import { db } from './client'
-import { participants, matches, picks } from './schema'
+import { participants, matches, picks, lifeLosses } from './schema'
 
 export async function getParticipantByUsername(username: string) {
   const rows = await db.select().from(participants).where(eq(participants.username, username)).limit(1)
@@ -27,6 +27,21 @@ export async function getTeamsUsedBy(participantId: string): Promise<string[]> {
 
 export async function getPicksByDate(matchDate: string) {
   return db.select().from(picks).where(eq(picks.matchDate, matchDate))
+}
+
+/** All matches from a given Brasília date onward (today + future), ordered by kickoff. */
+export async function getMatchesFrom(fromDate: string) {
+  return db.select().from(matches).where(gte(matches.matchDate, fromDate)).orderBy(matches.utcKickoff)
+}
+
+/** All picks from a given Brasília date onward (today + future). */
+export async function getPicksFrom(fromDate: string) {
+  return db.select().from(picks).where(gte(picks.matchDate, fromDate))
+}
+
+/** Remove a participant's pick for a given day (used to free a team before its deadline). */
+export async function deletePick(participantId: string, matchDate: string) {
+  await db.delete(picks).where(and(eq(picks.participantId, participantId), eq(picks.matchDate, matchDate)))
 }
 
 /** Upsert a pick (replace the participant's pick for that day). */
@@ -70,4 +85,14 @@ export async function setMatchResult(matchId: string, homeScore: number, awaySco
 export async function countMatches(): Promise<{ total: number; finished: number }> {
   const rows = await db.select({ status: matches.status }).from(matches)
   return { total: rows.length, finished: rows.filter((r) => r.status === 'FINISHED').length }
+}
+
+/** Record one life lost on a day; idempotent via the unique (participant, day) constraint. */
+export async function recordLifeLoss(participantId: string, matchDate: string, reason: 'lost' | 'no_pick') {
+  await db.insert(lifeLosses).values({ participantId, matchDate, reason }).onConflictDoNothing()
+}
+
+/** All life-loss rows (participant + day + reason). Used to derive lives/standings. */
+export async function getAllLifeLosses() {
+  return db.select().from(lifeLosses)
 }

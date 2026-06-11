@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { teamSurvives, settleDay, decideWinners } from './rules'
+import { teamSurvives, settleDay, decideWinners, computeStanding } from './rules'
 import type { FinishedMatch, SettleInput } from './rules'
 
 const match = (h: string, a: string, hs: number, as: number): FinishedMatch => ({
@@ -105,5 +105,22 @@ describe('decideWinners', () => {
         false,
       ).sort(),
     ).toEqual(['a', 'b'])
+  })
+})
+
+describe('computeStanding', () => {
+  it('starts with 3 lives and no losses', () => {
+    expect(computeStanding([])).toEqual({ lives: 3, eliminated: false, eliminatedDate: null })
+  })
+  it('loses one life per loss day', () => {
+    expect(computeStanding(['2026-06-12'])).toEqual({ lives: 2, eliminated: false, eliminatedDate: null })
+    expect(computeStanding(['2026-06-12', '2026-06-15'])).toEqual({ lives: 1, eliminated: false, eliminatedDate: null })
+  })
+  it('eliminates at the third loss, dated on the day lives hit zero', () => {
+    expect(computeStanding(['2026-06-12', '2026-06-20', '2026-06-15'])).toEqual({
+      lives: 0,
+      eliminated: true,
+      eliminatedDate: '2026-06-20',
+    })
   })
 })

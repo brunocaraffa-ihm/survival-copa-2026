@@ -40,3 +40,20 @@ export const picks = pgTable(
     noRepeatTeam: unique('no_repeat_team').on(t.participantId, t.team),
   }),
 )
+
+// One row = one life lost on a given day. Unique (participant, day) makes
+// settlement idempotent: a participant can lose at most one life per day,
+// no matter how many times the cron runs.
+export const lifeLosses = pgTable(
+  'life_losses',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    participantId: uuid('participant_id').notNull().references(() => participants.id),
+    matchDate: date('match_date').notNull(),
+    reason: text('reason', { enum: ['lost', 'no_pick'] }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    oneLossPerDay: unique('one_loss_per_day').on(t.participantId, t.matchDate),
+  }),
+)
