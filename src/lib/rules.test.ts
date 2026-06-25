@@ -119,19 +119,26 @@ describe('phaseOf', () => {
 })
 
 describe('computeStanding', () => {
-  it('starts with 3 lives and no losses', () => {
+  const loss = (date: string) => ({ date, reason: 'lost' as const })
+  it('starts with 3 lives', () => {
     expect(computeStanding([])).toEqual({ lives: 3, eliminated: false, eliminatedDate: null })
   })
-  it('loses one life per loss day', () => {
-    expect(computeStanding(['2026-06-12'])).toEqual({ lives: 2, eliminated: false, eliminatedDate: null })
-    expect(computeStanding(['2026-06-12', '2026-06-15'])).toEqual({ lives: 1, eliminated: false, eliminatedDate: null })
+  it('loses one life per life-loss event', () => {
+    expect(computeStanding([loss('2026-06-12')])).toEqual({ lives: 2, eliminated: false, eliminatedDate: null })
   })
-  it('eliminates at the third loss, dated on the day lives hit zero', () => {
-    expect(computeStanding(['2026-06-12', '2026-06-20', '2026-06-15'])).toEqual({
-      lives: 0,
-      eliminated: true,
-      eliminatedDate: '2026-06-20',
+  it('eliminates at the third loss, dated when lives hit zero', () => {
+    expect(computeStanding([loss('2026-06-12'), loss('2026-06-20'), loss('2026-06-15')])).toEqual({
+      lives: 0, eliminated: true, eliminatedDate: '2026-06-20',
     })
+  })
+  it('no_options eliminates immediately without spending a life', () => {
+    expect(computeStanding([{ date: '2026-07-05', reason: 'no_options' }])).toEqual({
+      lives: 3, eliminated: true, eliminatedDate: '2026-07-05',
+    })
+  })
+  it('eliminatedDate is the earliest of zero-day and no_options', () => {
+    const out = computeStanding([loss('2026-06-12'), loss('2026-06-13'), loss('2026-06-14'), { date: '2026-07-01', reason: 'no_options' }])
+    expect(out.eliminatedDate).toBe('2026-06-14')
   })
 })
 
