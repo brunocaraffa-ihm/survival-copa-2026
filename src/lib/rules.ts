@@ -111,16 +111,26 @@ export function settleGroup(input: SettleGroupInput): LossEvent[] {
   return out
 }
 
-/** Winner(s) = the longest survivors. Shared on ties. [] while undecided. */
-export function decideWinners(
-  participants: { id: string; status: 'alive' | 'eliminated'; eliminatedDate: string | null }[],
-  tournamentOver: boolean,
-): string[] {
-  const alive = participants.filter((p) => p.status === 'alive')
+/** Winner(s) at tournament end. Champion-picker trumps all; else most lives;
+ *  else (nobody alive) the latest-eliminated share. [] while undecided. */
+export function decideWinners(input: {
+  participants: { id: string; eliminated: boolean; eliminatedDate: string | null; lives: number; finalPick: string | null }[]
+  championTeam: string | null
+  tournamentOver: boolean
+}): string[] {
+  const { participants, championTeam, tournamentOver } = input
+  const alive = participants.filter((p) => !p.eliminated)
+
   if (alive.length > 0) {
-    return tournamentOver ? alive.map((p) => p.id) : []
+    if (!tournamentOver) return []
+    if (championTeam) {
+      const champs = alive.filter((p) => p.finalPick === championTeam)
+      if (champs.length > 0) return champs.map((p) => p.id)
+    }
+    const maxLives = Math.max(...alive.map((p) => p.lives))
+    return alive.filter((p) => p.lives === maxLives).map((p) => p.id)
   }
-  // everyone eliminated → those eliminated on the latest date share the title
+
   const dates = participants.map((p) => p.eliminatedDate).filter((d): d is string => d !== null)
   if (dates.length === 0) return []
   const last = dates.reduce((a, b) => (a >= b ? a : b))

@@ -86,24 +86,41 @@ describe('settleGroup — knockout phase (must advance)', () => {
 })
 
 describe('decideWinners', () => {
-  const p = (id: string, status: 'alive' | 'eliminated', date: string | null) => ({
-    id, status, eliminatedDate: date,
+  const part = (id: string, opts: Partial<{ eliminated: boolean; eliminatedDate: string | null; lives: number; finalPick: string | null }> = {}) => ({
+    id, eliminated: opts.eliminated ?? false, eliminatedDate: opts.eliminatedDate ?? null,
+    lives: opts.lives ?? 3, finalPick: opts.finalPick ?? null,
   })
-  it('returns no winners while the tournament is ongoing and people are alive', () => {
-    expect(decideWinners([p('a', 'alive', null), p('b', 'eliminated', '2026-06-20')], false)).toEqual([])
+
+  it('no winners while alive players remain and the tournament is ongoing', () => {
+    expect(decideWinners({ participants: [part('a'), part('b', { eliminated: true, eliminatedDate: '2026-06-20' })], championTeam: null, tournamentOver: false })).toEqual([])
   })
-  it('returns all survivors as shared winners when the tournament is over', () => {
-    expect(
-      decideWinners([p('a', 'alive', null), p('b', 'alive', null), p('c', 'eliminated', '2026-07-01')], true).sort(),
-    ).toEqual(['a', 'b'])
+  it('champion-picker wins outright, even with fewer lives', () => {
+    const out = decideWinners({
+      participants: [part('a', { lives: 1, finalPick: 'Brazil' }), part('b', { lives: 3, finalPick: 'France' })],
+      championTeam: 'Brazil', tournamentOver: true,
+    })
+    expect(out).toEqual(['a'])
   })
-  it('when everyone is out, the last to fall share the title', () => {
-    expect(
-      decideWinners(
-        [p('a', 'eliminated', '2026-07-10'), p('b', 'eliminated', '2026-07-10'), p('c', 'eliminated', '2026-06-30')],
-        false,
-      ).sort(),
-    ).toEqual(['a', 'b'])
+  it('without a champion-picker, most lives wins (shared on ties)', () => {
+    const out = decideWinners({
+      participants: [part('a', { lives: 2, finalPick: 'X' }), part('b', { lives: 2, finalPick: 'Y' }), part('c', { lives: 1 })],
+      championTeam: 'Brazil', tournamentOver: true,
+    }).sort()
+    expect(out).toEqual(['a', 'b'])
+  })
+  it('multiple champion-pickers share', () => {
+    const out = decideWinners({
+      participants: [part('a', { lives: 3, finalPick: 'Brazil' }), part('b', { lives: 1, finalPick: 'Brazil' })],
+      championTeam: 'Brazil', tournamentOver: true,
+    }).sort()
+    expect(out).toEqual(['a', 'b'])
+  })
+  it('everyone eliminated → last to fall share', () => {
+    const out = decideWinners({
+      participants: [part('a', { eliminated: true, eliminatedDate: '2026-07-10' }), part('b', { eliminated: true, eliminatedDate: '2026-07-10' }), part('c', { eliminated: true, eliminatedDate: '2026-06-30' })],
+      championTeam: 'Brazil', tournamentOver: true,
+    }).sort()
+    expect(out).toEqual(['a', 'b'])
   })
 })
 
