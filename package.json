@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "seed:fixtures": "tsx src/scripts/seed-fixtures.ts"
+    "seed:fixtures": "tsx src/scripts/seed-fixtures.ts",
+    "backfill:groupkey": "tsx src/scripts/backfill-groupkey.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
