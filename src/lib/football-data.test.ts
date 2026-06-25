@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mapApiMatch } from './football-data'
+import { mapApiMatch, type ApiMatch } from './football-data'
 
 describe('mapApiMatch', () => {
   it('maps a finished group match using full-time score', () => {
@@ -33,5 +33,27 @@ describe('mapApiMatch', () => {
     })
     expect(m.status).toBe('SCHEDULED')
     expect(m.homeScore).toBeNull()
+  })
+})
+
+function apiMatch(over: Partial<ApiMatch> = {}): ApiMatch {
+  return {
+    id: 1, utcDate: '2026-07-01T16:00:00Z', status: 'FINISHED', stage: 'LAST_32',
+    homeTeam: { name: 'Brazil' }, awayTeam: { name: 'Croatia' },
+    score: { duration: 'PENALTY_SHOOTOUT', fullTime: { home: 1, away: 1 }, penalties: { home: 4, away: 2 } },
+    ...over,
+  }
+}
+
+describe('mapApiMatch penalties', () => {
+  it('captures penalties when finished', () => {
+    const m = mapApiMatch(apiMatch())
+    expect(m.homePenalties).toBe(4)
+    expect(m.awayPenalties).toBe(2)
+  })
+  it('penalties are null when not finished', () => {
+    const m = mapApiMatch(apiMatch({ status: 'SCHEDULED', score: { duration: 'REGULAR', fullTime: { home: null, away: null }, penalties: { home: null, away: null } } }))
+    expect(m.homePenalties).toBeNull()
+    expect(m.awayPenalties).toBeNull()
   })
 })

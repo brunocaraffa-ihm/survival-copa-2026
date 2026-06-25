@@ -23,6 +23,9 @@ export type MappedMatch = {
   /** Regulation/ET score, penalties excluded. Null until finished. */
   homeScore: number | null
   awayScore: number | null
+  /** Shootout score, null unless a knockout tie was decided on penalties. */
+  homePenalties: number | null
+  awayPenalties: number | null
 }
 
 function normStatus(s: string): MappedMatch['status'] {
@@ -43,6 +46,8 @@ export function mapApiMatch(m: ApiMatch): MappedMatch {
     awayTeam: m.awayTeam.name ?? 'TBD',
     homeScore: status === 'FINISHED' ? m.score.fullTime.home : null,
     awayScore: status === 'FINISHED' ? m.score.fullTime.away : null,
+    homePenalties: status === 'FINISHED' ? m.score.penalties.home : null,
+    awayPenalties: status === 'FINISHED' ? m.score.penalties.away : null,
   }
 }
 
