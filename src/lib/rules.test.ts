@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { teamSurvives, settleDay, decideWinners, computeStanding, phaseOf } from './rules'
+import { teamSurvives, settleDay, decideWinners, computeStanding, phaseOf, teamAdvanced } from './rules'
 import type { FinishedMatch, SettleInput } from './rules'
 
 const match = (h: string, a: string, hs: number, as: number): FinishedMatch => ({
@@ -133,5 +133,25 @@ describe('computeStanding', () => {
       eliminated: true,
       eliminatedDate: '2026-06-20',
     })
+  })
+})
+
+describe('teamAdvanced', () => {
+  const ko = (h: string, a: string, hs: number, as: number, hp: number | null = null, ap: number | null = null) => ({
+    homeTeam: h, awayTeam: a, homeScore: hs, awayScore: as, homePenalties: hp, awayPenalties: ap,
+  })
+  it('advances on a regulation/ET win', () => {
+    expect(teamAdvanced(ko('Brazil', 'Serbia', 2, 0), 'Brazil')).toBe(true)
+    expect(teamAdvanced(ko('Brazil', 'Serbia', 2, 0), 'Serbia')).toBe(false)
+  })
+  it('a draw decided on penalties: winner advances, loser does not', () => {
+    expect(teamAdvanced(ko('Brazil', 'Croatia', 1, 1, 4, 2), 'Brazil')).toBe(true)
+    expect(teamAdvanced(ko('Brazil', 'Croatia', 1, 1, 4, 2), 'Croatia')).toBe(false)
+  })
+  it('a draw with no penalties recorded is undecided (null)', () => {
+    expect(teamAdvanced(ko('Brazil', 'Croatia', 1, 1), 'Brazil')).toBeNull()
+  })
+  it('throws if the team is not in the match', () => {
+    expect(() => teamAdvanced(ko('Brazil', 'Croatia', 1, 0), 'France')).toThrow()
   })
 })

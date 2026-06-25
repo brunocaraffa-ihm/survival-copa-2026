@@ -29,6 +29,32 @@ export function teamSurvives(m: FinishedMatch, team: string): boolean {
   return own >= opp
 }
 
+/** A knockout match's score + penalties (penalties null until/unless a shootout happened). */
+export type AdvanceMatch = {
+  homeTeam: string
+  awayTeam: string
+  homeScore: number
+  awayScore: number
+  homePenalties: number | null
+  awayPenalties: number | null
+}
+
+/** Did `team` advance? true = advanced, false = eliminated, null = undecided
+ *  (drew in regulation/ET with no penalty result yet). */
+export function teamAdvanced(m: AdvanceMatch, team: string): boolean | null {
+  const isHome = m.homeTeam === team
+  const isAway = m.awayTeam === team
+  if (!isHome && !isAway) throw new Error(`Team ${team} not in match`)
+  const own = isHome ? m.homeScore : m.awayScore
+  const opp = isHome ? m.awayScore : m.homeScore
+  if (own > opp) return true
+  if (own < opp) return false
+  const ownP = isHome ? m.homePenalties : m.awayPenalties
+  const oppP = isHome ? m.awayPenalties : m.homePenalties
+  if (ownP === null || oppP === null) return null
+  return ownP > oppP
+}
+
 /** Compute the eliminations produced by settling a single match day. Pure + idempotent. */
 export function settleDay(input: SettleInput): Elimination[] {
   const out: Elimination[] = []
