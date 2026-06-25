@@ -7,18 +7,6 @@ export type FinishedMatch = {
   status: 'FINISHED'
 }
 
-export type EliminationReason = 'lost' | 'no_pick'
-
-export type SettleInput = {
-  matchDate: string
-  hasMatches: boolean
-  deadlinePassed: boolean
-  participants: { id: string; status: 'alive' | 'eliminated' }[]
-  picks: { participantId: string; team: string; match: FinishedMatch | null }[]
-}
-
-export type Elimination = { participantId: string; reason: EliminationReason; date: string }
-
 /** A team survives if it won or drew (penalty-shootout result is ignored). */
 export function teamSurvives(m: FinishedMatch, team: string): boolean {
   const isHome = m.homeTeam === team
@@ -55,27 +43,70 @@ export function teamAdvanced(m: AdvanceMatch, team: string): boolean | null {
   return ownP > oppP
 }
 
-/** Compute the eliminations produced by settling a single match day. Pure + idempotent. */
-export function settleDay(input: SettleInput): Elimination[] {
-  const out: Elimination[] = []
+export type Reason = 'lost' | 'no_pick' | 'no_options'
+
+/** A finished match with penalties — used by settlement for both phases. */
+export type SettleMatch = {
+  homeTeam: string
+  awayTeam: string
+  homeScore: number
+  awayScore: number
+  homePenalties: number | null
+  awayPenalties: number | null
+  status: 'FINISHED'
+}
+
+export type SettleGroupInput = {
+  groupKey: string
+  /** Representative date for the loss event (group deadline date in BRT). */
+  date: string
+  phase: Phase
+  hasMatches: boolean
+  deadlinePassed: boolean
+  /** Alive participants only. */
+  participants: { id: string }[]
+  /** Each pick's chosen team and that team's match (finished, or null = pending). */
+  picks: { participantId: string; team: string; match: SettleMatch | null }[]
+  /** Knockout only: non-TBD teams in this group. */
+  groupTeams?: string[]
+  /** Knockout only: teams each participant already used in the knockout phase. */
+  usedKnockoutTeams?: Map<string, string[]>
+}
+
+export type LossEvent = { participantId: string; reason: Reason; date: string; groupKey: string }
+
+/** Settle one pick group. Pure + idempotent (callers dedupe by groupKey). */
+export function settleGroup(input: SettleGroupInput): LossEvent[] {
+  const out: LossEvent[] = []
   const pickByPid = new Map(input.picks.map((p) => [p.participantId, p]))
+  const ev = (participantId: string, reason: Reason): LossEvent => ({
+    participantId, reason, date: input.date, groupKey: input.groupKey,
+  })
 
   for (const participant of input.participants) {
-    if (participant.status !== 'alive') continue
     const pick = pickByPid.get(participant.id)
 
     if (!pick) {
-      if (input.hasMatches && input.deadlinePassed) {
-        out.push({ participantId: participant.id, reason: 'no_pick', date: input.matchDate })
+      if (!input.hasMatches || !input.deadlinePassed) continue
+      if (input.phase === 'knockout') {
+        const used = input.usedKnockoutTeams?.get(participant.id) ?? []
+        const available = (input.groupTeams ?? []).filter((t) => !used.includes(t))
+        out.push(ev(participant.id, available.length === 0 ? 'no_options' : 'no_pick'))
+      } else {
+        out.push(ev(participant.id, 'no_pick'))
       }
       continue
     }
-    if (pick.match && pick.match.status === 'FINISHED') {
-      if (!teamSurvives(pick.match, pick.team)) {
-        out.push({ participantId: participant.id, reason: 'lost', date: input.matchDate })
-      }
+
+    if (!pick.match || pick.match.status !== 'FINISHED') continue // pending
+
+    if (input.phase === 'knockout') {
+      const advanced = teamAdvanced(pick.match, pick.team)
+      if (advanced === null) continue // shootout result not in yet → pending
+      if (!advanced) out.push(ev(participant.id, 'lost'))
+    } else {
+      if (!teamSurvives(pick.match, pick.team)) out.push(ev(participant.id, 'lost'))
     }
-    // pick with no finished match → pending, no action
   }
   return out
 }

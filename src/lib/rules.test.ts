@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { teamSurvives, settleDay, decideWinners, computeStanding, phaseOf, teamAdvanced } from './rules'
-import type { FinishedMatch, SettleInput } from './rules'
+import { teamSurvives, settleGroup, decideWinners, computeStanding, phaseOf, teamAdvanced } from './rules'
+import type { FinishedMatch, SettleGroupInput } from './rules'
 
 const match = (h: string, a: string, hs: number, as: number): FinishedMatch => ({
   homeTeam: h, awayTeam: a, homeScore: hs, awayScore: as, status: 'FINISHED',
@@ -22,67 +22,66 @@ describe('teamSurvives', () => {
   })
 })
 
-describe('settleDay', () => {
-  const base: SettleInput = {
-    matchDate: '2026-06-11',
-    hasMatches: true,
-    deadlinePassed: true,
-    participants: [
-      { id: 'p1', status: 'alive' },
-      { id: 'p2', status: 'alive' },
-      { id: 'p3', status: 'alive' },
-      { id: 'p4', status: 'eliminated' },
-    ],
+describe('settleGroup — group phase (draw saves)', () => {
+  const base: SettleGroupInput = {
+    groupKey: 'g:2026-06-11', date: '2026-06-11', phase: 'group',
+    hasMatches: true, deadlinePassed: true,
+    participants: [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }],
     picks: [
-      { participantId: 'p1', team: 'Brazil', match: match('Brazil', 'Serbia', 2, 0) },
-      { participantId: 'p2', team: 'Mexico', match: match('Mexico', 'Argentina', 0, 2) },
-      // p3 has no pick
+      { participantId: 'p1', team: 'Brazil', match: { homeTeam: 'Brazil', awayTeam: 'Serbia', homeScore: 2, awayScore: 0, homePenalties: null, awayPenalties: null, status: 'FINISHED' } },
+      { participantId: 'p2', team: 'Mexico', match: { homeTeam: 'Mexico', awayTeam: 'Argentina', homeScore: 0, awayScore: 2, homePenalties: null, awayPenalties: null, status: 'FINISHED' } },
+      // p3 no pick
     ],
   }
+  it('loses a life on a losing pick', () => {
+    expect(settleGroup(base)).toContainEqual({ participantId: 'p2', reason: 'lost', date: '2026-06-11', groupKey: 'g:2026-06-11' })
+  })
+  it('a draw does NOT cost a life in the group phase', () => {
+    const out = settleGroup({ ...base, picks: [{ participantId: 'p1', team: 'Brazil', match: { homeTeam: 'Brazil', awayTeam: 'Croatia', homeScore: 1, awayScore: 1, homePenalties: null, awayPenalties: null, status: 'FINISHED' } }] })
+    expect(out.find((e) => e.participantId === 'p1')).toBeUndefined()
+  })
+  it('no pick after deadline = no_pick', () => {
+    expect(settleGroup(base)).toContainEqual({ participantId: 'p3', reason: 'no_pick', date: '2026-06-11', groupKey: 'g:2026-06-11' })
+  })
+  it('no no_pick when the group has no matches or before the deadline', () => {
+    expect(settleGroup({ ...base, hasMatches: false, picks: [] }).length).toBe(0)
+    expect(settleGroup({ ...base, deadlinePassed: false, picks: [] }).length).toBe(0)
+  })
+  it('leaves a pending pick (match not finished) alone', () => {
+    const out = settleGroup({ ...base, picks: [{ participantId: 'p1', team: 'Brazil', match: null }] })
+    expect(out.find((e) => e.participantId === 'p1')).toBeUndefined()
+  })
+})
 
-  it('eliminates a losing pick with reason lost', () => {
-    const out = settleDay(base)
-    expect(out).toContainEqual({ participantId: 'p2', reason: 'lost', date: '2026-06-11' })
+describe('settleGroup — knockout phase (must advance)', () => {
+  const base: SettleGroupInput = {
+    groupKey: 'k:LAST_32:1', date: '2026-07-01', phase: 'knockout',
+    hasMatches: true, deadlinePassed: true,
+    groupTeams: ['Brazil', 'Serbia', 'France', 'Mexico'],
+    usedKnockoutTeams: new Map([['p3', ['Brazil', 'Serbia', 'France', 'Mexico']]]),
+    participants: [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }],
+    picks: [
+      { participantId: 'p1', team: 'Brazil', match: { homeTeam: 'Brazil', awayTeam: 'Serbia', homeScore: 1, awayScore: 1, homePenalties: 4, awayPenalties: 2, status: 'FINISHED' } },
+      { participantId: 'p2', team: 'France', match: { homeTeam: 'France', awayTeam: 'Mexico', homeScore: 1, awayScore: 1, homePenalties: 2, awayPenalties: 4, status: 'FINISHED' } },
+      // p3 no pick, and has used every team in the group
+    ],
+  }
+  it('a draw won on penalties advances → no life lost', () => {
+    expect(settleGroup(base).find((e) => e.participantId === 'p1')).toBeUndefined()
   })
-  it('eliminates an alive participant with no pick as no_pick', () => {
-    const out = settleDay(base)
-    expect(out).toContainEqual({ participantId: 'p3', reason: 'no_pick', date: '2026-06-11' })
+  it('a draw lost on penalties → loses a life', () => {
+    expect(settleGroup(base)).toContainEqual({ participantId: 'p2', reason: 'lost', date: '2026-07-01', groupKey: 'k:LAST_32:1' })
   })
-  it('does not eliminate a surviving pick', () => {
-    const out = settleDay(base)
+  it('no pick + every group team already used → no_options', () => {
+    expect(settleGroup(base)).toContainEqual({ participantId: 'p3', reason: 'no_options', date: '2026-07-01', groupKey: 'k:LAST_32:1' })
+  })
+  it('no pick but an eligible team remains → no_pick (not no_options)', () => {
+    const out = settleGroup({ ...base, usedKnockoutTeams: new Map([['p3', ['Brazil', 'Serbia']]]) })
+    expect(out).toContainEqual({ participantId: 'p3', reason: 'no_pick', date: '2026-07-01', groupKey: 'k:LAST_32:1' })
+  })
+  it('a draw with no penalties yet leaves the pick pending', () => {
+    const out = settleGroup({ ...base, picks: [{ participantId: 'p1', team: 'Brazil', match: { homeTeam: 'Brazil', awayTeam: 'Serbia', homeScore: 1, awayScore: 1, homePenalties: null, awayPenalties: null, status: 'FINISHED' } }] })
     expect(out.find((e) => e.participantId === 'p1')).toBeUndefined()
-  })
-  it('never re-eliminates an already-eliminated participant', () => {
-    const out = settleDay(base)
-    expect(out.find((e) => e.participantId === 'p4')).toBeUndefined()
-  })
-  it('does not eliminate no_pick when the day has no matches', () => {
-    const out = settleDay({ ...base, hasMatches: false, picks: [] })
-    expect(out.find((e) => e.reason === 'no_pick')).toBeUndefined()
-  })
-  it('does not eliminate no_pick before the deadline has passed', () => {
-    const out = settleDay({ ...base, deadlinePassed: false, picks: [] })
-    expect(out.find((e) => e.reason === 'no_pick')).toBeUndefined()
-  })
-  it('leaves a pick pending when its match is not finished yet', () => {
-    const out = settleDay({
-      ...base,
-      picks: [{ participantId: 'p1', team: 'Brazil', match: null }],
-    })
-    expect(out.find((e) => e.participantId === 'p1')).toBeUndefined()
-  })
-  it('is idempotent: re-running on already-eliminated yields no new eliminations', () => {
-    const afterFirst: SettleInput = {
-      ...base,
-      participants: [
-        { id: 'p1', status: 'alive' },
-        { id: 'p2', status: 'eliminated' },
-        { id: 'p3', status: 'eliminated' },
-        { id: 'p4', status: 'eliminated' },
-      ],
-    }
-    const out = settleDay(afterFirst)
-    expect(out).toEqual([])
   })
 })
 
