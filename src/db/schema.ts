@@ -47,9 +47,9 @@ export const picks = pgTable(
   }),
 )
 
-// One row = one life lost on a given day. Unique (participant, day) makes
-// settlement idempotent: a participant can lose at most one life per day,
-// no matter how many times the cron runs.
+// One row = one life event for a pick group. Unique (participant, groupKey)
+// makes settlement idempotent: a participant can lose at most one life per
+// group, no matter how many times the cron runs.
 export const lifeLosses = pgTable(
   'life_losses',
   {

@@ -25,21 +25,6 @@ export async function getUsedTeamPhases(participantId: string): Promise<{ team: 
   return db.select({ team: picks.team, phase: picks.phase }).from(picks).where(eq(picks.participantId, participantId))
 }
 
-export async function getPicksByDate(matchDate: string) {
-  return db.select().from(picks).where(eq(picks.matchDate, matchDate))
-}
-
-/** All matches from a given Brasília date onward (today + future), ordered by kickoff. */
-export async function getMatchesFrom(fromDate: string) {
-  return db.select().from(matches).where(gte(matches.matchDate, fromDate)).orderBy(matches.utcKickoff)
-}
-
-/** Distinct match-day keys across the whole tournament, ascending — used for "Match Day N". */
-export async function getAllMatchDays(): Promise<string[]> {
-  const rows = await db.selectDistinct({ d: matches.matchDate }).from(matches).orderBy(matches.matchDate)
-  return rows.map((r) => r.d)
-}
-
 /** All picks from a given Brasília date onward (today + future). */
 export async function getPicksFrom(fromDate: string) {
   return db.select().from(picks).where(gte(picks.matchDate, fromDate))
