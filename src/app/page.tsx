@@ -4,8 +4,9 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { currentParticipant } from '@/lib/session'
 import { getSchedule } from '@/app/actions/pick-actions'
-import { listParticipants, countMatches, getAllLifeLosses } from '@/db/queries'
-import { decideWinners, computeStanding, STARTING_LIVES } from '@/lib/rules'
+import { listParticipants, countMatches, getAllLifeLosses, getAllMatches, getPicksFrom } from '@/db/queries'
+import { decideWinners, computeStanding, teamAdvanced, STARTING_LIVES } from '@/lib/rules'
+import { buildPickGroups } from '@/lib/groups'
 import { DayPickForm } from '@/app/_components/DayPickForm'
 import { logout } from '@/app/actions/auth-actions'
 
@@ -35,25 +36,45 @@ export default async function Dashboard() {
   const counts = await countMatches()
   const losses = await getAllLifeLosses()
 
-  const lossDatesByPid = new Map<string, string[]>()
+  const eventsByPid = new Map<string, { date: string; reason: 'lost' | 'no_pick' | 'no_options' }[]>()
   for (const l of losses) {
-    const a = lossDatesByPid.get(l.participantId) ?? []
-    a.push(l.matchDate)
-    lossDatesByPid.set(l.participantId, a)
+    const a = eventsByPid.get(l.participantId) ?? []
+    a.push({ date: l.matchDate, reason: l.reason })
+    eventsByPid.set(l.participantId, a)
   }
-  const standingOf = (id: string) => computeStanding(lossDatesByPid.get(id) ?? [])
+  const standingOf = (id: string) => computeStanding(eventsByPid.get(id) ?? [])
   const nameOf = (id: string) => everyone.find((p) => p.id === id)?.name ?? '?'
+
+  // champion (winner of the Final) + each participant's final-group pick, for the tiebreak
+  const allMatches = await getAllMatches()
+  const groups = buildPickGroups(
+    allMatches.map((m) => ({ id: m.id, stage: m.stage, homeTeam: m.homeTeam, awayTeam: m.awayTeam, utcKickoff: m.utcKickoff, matchDate: m.matchDate })),
+  )
+  const finalGroup = groups.find((g) => g.key.startsWith('k:FINAL'))
+  const finalMatch = finalGroup ? allMatches.find((m) => m.id === finalGroup.matchIds[0]) : undefined
+  let championTeam: string | null = null
+  if (finalMatch && finalMatch.status === 'FINISHED' && finalMatch.homeScore !== null && finalMatch.awayScore !== null) {
+    const adv = teamAdvanced(
+      { homeTeam: finalMatch.homeTeam, awayTeam: finalMatch.awayTeam, homeScore: finalMatch.homeScore, awayScore: finalMatch.awayScore, homePenalties: finalMatch.homePenalties, awayPenalties: finalMatch.awayPenalties },
+      finalMatch.homeTeam,
+    )
+    if (adv !== null) championTeam = adv ? finalMatch.homeTeam : finalMatch.awayTeam
+  }
+  const allPicks = await getPicksFrom('2026-06-11')
+  const finalPickOf = (id: string) =>
+    finalGroup ? allPicks.find((p) => p.groupKey === finalGroup.key && p.participantId === id)?.team ?? null : null
 
   const aliveCount = everyone.filter((p) => !standingOf(p.id).eliminated).length
   const tournamentOver =
     (counts.total > 0 && counts.finished === counts.total) || (everyone.length > 1 && aliveCount <= 1)
-  const winnerIds = decideWinners(
-    everyone.map((p) => {
+  const winnerIds = decideWinners({
+    participants: everyone.map((p) => {
       const s = standingOf(p.id)
-      return { id: p.id, status: s.eliminated ? ('eliminated' as const) : ('alive' as const), eliminatedDate: s.eliminatedDate }
+      return { id: p.id, eliminated: s.eliminated, eliminatedDate: s.eliminatedDate, lives: s.lives, finalPick: finalPickOf(p.id) }
     }),
+    championTeam,
     tournamentOver,
-  )
+  })
   const winnerNames = everyone.filter((p) => winnerIds.includes(p.id)).map((p) => p.name)
 
   const pot = everyone.length * 50
@@ -102,10 +123,10 @@ export default async function Dashboard() {
         ) : (
           <ul className="flex flex-col gap-4">
             {schedule.days.map((day) => (
-              <li key={day.date} className="rounded border p-3">
+              <li key={day.groupKey} className="rounded border p-3">
                 <div className="mb-1 flex items-center justify-between">
                   <span className="font-medium">
-                    Match Day {day.matchDayNumber} <span className="text-xs font-normal text-gray-500">· {fmtDay(day.date)}</span>
+                    {day.label} <span className="text-xs font-normal text-gray-500">· {fmtDay(day.date)}</span>
                   </span>
                   <span className="text-xs text-gray-600">
                     {day.deadline ? `fecha ${fmtTime(day.deadline)} (Brasília)` : ''}{' '}
@@ -132,9 +153,11 @@ export default async function Dashboard() {
                   <p className="text-sm text-gray-500">
                     {day.myPick ? `Seu palpite: ${day.myPick}` : 'Você está fora.'}
                   </p>
+                ) : day.noOptions ? (
+                  <p className="text-sm text-red-600">Sem times disponíveis neste grupo — você está fora. 💀</p>
                 ) : day.pickable.length > 0 ? (
                   <DayPickForm
-                    date={day.date}
+                    groupKey={day.groupKey}
                     pickable={day.pickable}
                     teamsUsedByPhase={schedule.teamsUsedByPhase}
                     currentPick={day.myPick}
