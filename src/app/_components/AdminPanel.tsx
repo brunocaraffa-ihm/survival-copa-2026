@@ -14,7 +14,15 @@ export function AdminPanel({ participants, todayMatches }: { participants: P[]; 
     setCreated(await createParticipant(name, username))
   }
   async function setResult(formData: FormData) {
-    await overrideResult(String(formData.get('matchId')), Number(formData.get('home')), Number(formData.get('away')))
+    const hp = formData.get('homePen')
+    const ap = formData.get('awayPen')
+    await overrideResult(
+      String(formData.get('matchId')),
+      Number(formData.get('home')),
+      Number(formData.get('away')),
+      hp === null || hp === '' ? null : Number(hp),
+      ap === null || ap === '' ? null : Number(ap),
+    )
   }
 
   return (
@@ -45,6 +53,9 @@ export function AdminPanel({ participants, todayMatches }: { participants: P[]; 
             <span>x</span>
             <input name="away" type="number" min="0" className="w-14 rounded border p-1" required />
             <span className="w-40">{m.awayTeam}</span>
+            <input name="homePen" type="number" min="0" placeholder="pen" className="w-12 rounded border p-1" />
+            <span className="text-xs text-gray-400">pen</span>
+            <input name="awayPen" type="number" min="0" placeholder="pen" className="w-12 rounded border p-1" />
             <button className="rounded bg-black px-2 py-1 text-white">salvar</button>
           </form>
         ))}

@@ -25,45 +25,35 @@ export async function getUsedTeamPhases(participantId: string): Promise<{ team: 
   return db.select({ team: picks.team, phase: picks.phase }).from(picks).where(eq(picks.participantId, participantId))
 }
 
-export async function getPicksByDate(matchDate: string) {
-  return db.select().from(picks).where(eq(picks.matchDate, matchDate))
-}
-
-/** All matches from a given Brasília date onward (today + future), ordered by kickoff. */
-export async function getMatchesFrom(fromDate: string) {
-  return db.select().from(matches).where(gte(matches.matchDate, fromDate)).orderBy(matches.utcKickoff)
-}
-
-/** Distinct match-day keys across the whole tournament, ascending — used for "Match Day N". */
-export async function getAllMatchDays(): Promise<string[]> {
-  const rows = await db.selectDistinct({ d: matches.matchDate }).from(matches).orderBy(matches.matchDate)
-  return rows.map((r) => r.d)
-}
-
 /** All picks from a given Brasília date onward (today + future). */
 export async function getPicksFrom(fromDate: string) {
   return db.select().from(picks).where(gte(picks.matchDate, fromDate))
 }
 
-/** Remove a participant's pick for a given day (used to free a team before its deadline). */
-export async function deletePick(participantId: string, matchDate: string) {
-  await db.delete(picks).where(and(eq(picks.participantId, participantId), eq(picks.matchDate, matchDate)))
+/** Remove a participant's pick for a given group (used to free a team before its deadline). */
+export async function deletePick(participantId: string, groupKey: string) {
+  await db.delete(picks).where(and(eq(picks.participantId, participantId), eq(picks.groupKey, groupKey)))
 }
 
-/** Upsert a pick (replace the participant's pick for that day). Atomic: if the
+/** Upsert a pick (replace the participant's pick for that group). Atomic: if the
  *  insert violates the no-repeat-team constraint, the delete rolls back so the
- *  participant keeps their previous pick for the day. */
+ *  participant keeps their previous pick for the group. */
 export async function upsertPick(input: {
   participantId: string
   matchDate: string
+  groupKey: string
   team: string
   matchId: string
   phase: 'group' | 'knockout'
 }) {
   await db.transaction(async (tx) => {
-    await tx.delete(picks).where(and(eq(picks.participantId, input.participantId), eq(picks.matchDate, input.matchDate)))
+    await tx.delete(picks).where(and(eq(picks.participantId, input.participantId), eq(picks.groupKey, input.groupKey)))
     await tx.insert(picks).values(input)
   })
+}
+
+export async function getPicksByGroup(groupKey: string) {
+  return db.select().from(picks).where(eq(picks.groupKey, groupKey))
 }
 
 export async function eliminateParticipant(id: string, date: string, reason: 'lost' | 'no_pick') {
@@ -82,20 +72,34 @@ export async function upsertMatch(m: {
   awayTeam: string
   homeScore: number | null
   awayScore: number | null
+  homePenalties?: number | null
+  awayPenalties?: number | null
   status: 'SCHEDULED' | 'IN_PLAY' | 'FINISHED'
 }) {
+  const row = { ...m, homePenalties: m.homePenalties ?? null, awayPenalties: m.awayPenalties ?? null }
   if (m.externalId) {
     const existing = await db.select().from(matches).where(eq(matches.externalId, m.externalId)).limit(1)
     if (existing[0]) {
-      await db.update(matches).set(m).where(eq(matches.externalId, m.externalId))
+      await db.update(matches).set(row).where(eq(matches.externalId, m.externalId))
       return
     }
   }
-  await db.insert(matches).values(m)
+  await db.insert(matches).values(row)
 }
 
-export async function setMatchResult(matchId: string, homeScore: number, awayScore: number) {
-  await db.update(matches).set({ homeScore, awayScore, status: 'FINISHED' }).where(eq(matches.id, matchId))
+export async function setMatchResult(
+  matchId: string,
+  homeScore: number,
+  awayScore: number,
+  homePenalties: number | null = null,
+  awayPenalties: number | null = null,
+) {
+  await db.update(matches).set({ homeScore, awayScore, homePenalties, awayPenalties, status: 'FINISHED' }).where(eq(matches.id, matchId))
+}
+
+/** Every match, ordered by kickoff — used to build pick groups across the tournament. */
+export async function getAllMatches() {
+  return db.select().from(matches).orderBy(matches.utcKickoff)
 }
 
 export async function countMatches(): Promise<{ total: number; finished: number }> {
@@ -103,9 +107,14 @@ export async function countMatches(): Promise<{ total: number; finished: number 
   return { total: rows.length, finished: rows.filter((r) => r.status === 'FINISHED').length }
 }
 
-/** Record one life lost on a day; idempotent via the unique (participant, day) constraint. */
-export async function recordLifeLoss(participantId: string, matchDate: string, reason: 'lost' | 'no_pick') {
-  await db.insert(lifeLosses).values({ participantId, matchDate, reason }).onConflictDoNothing()
+/** Record one life event for a group; idempotent via unique (participant, groupKey). */
+export async function recordLifeLoss(input: {
+  participantId: string
+  matchDate: string
+  groupKey: string
+  reason: 'lost' | 'no_pick' | 'no_options'
+}) {
+  await db.insert(lifeLosses).values(input).onConflictDoNothing()
 }
 
 /** All life-loss rows (participant + day + reason). Used to derive lives/standings. */

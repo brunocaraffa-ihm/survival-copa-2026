@@ -6,20 +6,20 @@ import { submitPick, clearPick } from '@/app/actions/pick-actions'
 const ERROR_PT: Record<string, string> = {
   eliminated: 'Você está sem vidas.',
   deadline_passed: 'O deadline já passou.',
-  not_playing_today: 'Esse time não joga nesse dia.',
+  not_playing_today: 'Esse time não joga nesse grupo.',
   team_already_used: 'Você já usou esse time.',
-  invalid_date: 'Data inválida.',
+  invalid_group: 'Grupo inválido.',
 }
 
 type Pickable = { team: string; phase: 'group' | 'knockout' }
 
 export function DayPickForm({
-  date,
+  groupKey,
   pickable,
   teamsUsedByPhase,
   currentPick,
 }: {
-  date: string
+  groupKey: string
   pickable: Pickable[]
   teamsUsedByPhase: { group: string[]; knockout: string[] }
   currentPick: string | null
@@ -30,7 +30,7 @@ export function DayPickForm({
   return (
     <div className="flex flex-col gap-1">
       <form action={formAction} className="flex flex-wrap items-center gap-2">
-        <input type="hidden" name="matchDate" value={date} />
+        <input type="hidden" name="groupKey" value={groupKey} />
         <select name="team" defaultValue={currentPick ?? ''} className="rounded border p-2" required>
           <option value="" disabled>
             escolha um time…
@@ -48,7 +48,7 @@ export function DayPickForm({
       </form>
       {currentPick && (
         <form action={clearPick}>
-          <input type="hidden" name="matchDate" value={date} />
+          <input type="hidden" name="groupKey" value={groupKey} />
           <button className="text-xs text-red-600 underline">limpar palpite ({currentPick})</button>
         </form>
       )}

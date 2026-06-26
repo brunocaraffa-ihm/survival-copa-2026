@@ -5,20 +5,15 @@ import { redirect } from 'next/navigation'
 import { currentParticipant } from '@/lib/session'
 import { getResults, type PickOutcome } from '@/app/actions/pick-actions'
 
-function fmtDay(date: string): string {
-  const [, m, d] = date.split('-')
-  return `${d}/${m}`
-}
-
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })
 }
 
-const BADGE: Record<PickOutcome, string> = {
-  survived: '✅ sobreviveu',
-  eliminated: '❌ caiu',
-  pending: '⏳ aguardando',
-  no_pick: '❌ não palpitou',
+function outcomeLabel(phase: 'group' | 'knockout', outcome: PickOutcome): string {
+  if (outcome === 'survived') return phase === 'knockout' ? '✅ classificou' : '✅ sobreviveu'
+  if (outcome === 'eliminated') return phase === 'knockout' ? '💀 eliminado' : '❌ caiu'
+  if (outcome === 'no_pick') return '❌ não palpitou'
+  return '⏳ aguardando'
 }
 
 export default async function ResultsPage() {
@@ -36,15 +31,13 @@ export default async function ResultsPage() {
       </div>
 
       {!data || data.days.length === 0 ? (
-        <p className="text-gray-600">Ainda não começou nenhum Match Day.</p>
+        <p className="text-gray-600">Ainda não começou nenhum grupo.</p>
       ) : (
         <ul className="flex flex-col gap-4">
           {data.days.map((day) => (
-            <li key={day.date} className="rounded border p-3">
+            <li key={day.groupKey} className="rounded border p-3">
               <div className="mb-2 flex items-center justify-between">
-                <span className="font-medium">
-                  Match Day {day.matchDayNumber} <span className="text-xs font-normal text-gray-500">· {fmtDay(day.date)}</span>
-                </span>
+                <span className="font-medium">{day.label}</span>
                 <span className="text-xs text-gray-600">{day.deadlinePassed ? '🔓 liberado' : '🔒'}</span>
               </div>
 
@@ -61,7 +54,7 @@ export default async function ResultsPage() {
                         <span className="text-gray-600">{r.team ?? '—'}</span>
                         {r.matchLabel && <span className="block text-xs text-gray-400">{r.matchLabel}</span>}
                       </span>
-                      <span className="shrink-0">{BADGE[r.outcome]}</span>
+                      <span className="shrink-0">{outcomeLabel(day.phase, r.outcome)}</span>
                     </li>
                   ))}
                 </ul>

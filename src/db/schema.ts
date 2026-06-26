@@ -22,6 +22,8 @@ export const matches = pgTable('matches', {
   awayTeam: text('away_team').notNull(),
   homeScore: integer('home_score'),
   awayScore: integer('away_score'),
+  homePenalties: integer('home_penalties'),
+  awayPenalties: integer('away_penalties'),
   status: text('status', { enum: ['SCHEDULED', 'IN_PLAY', 'FINISHED'] }).notNull().default('SCHEDULED'),
 })
 
@@ -31,6 +33,7 @@ export const picks = pgTable(
     id: uuid('id').defaultRandom().primaryKey(),
     participantId: uuid('participant_id').notNull().references(() => participants.id),
     matchDate: date('match_date').notNull(),
+    groupKey: text('group_key').notNull(),
     team: text('team').notNull(),
     matchId: uuid('match_id').notNull().references(() => matches.id),
     // 'group' | 'knockout' — no-repeat-team is scoped to the phase, so teams
@@ -39,24 +42,25 @@ export const picks = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    onePerDay: unique('one_pick_per_day').on(t.participantId, t.matchDate),
+    onePerGroup: unique('one_pick_per_group').on(t.participantId, t.groupKey),
     noRepeatTeamPerPhase: unique('no_repeat_team_phase').on(t.participantId, t.team, t.phase),
   }),
 )
 
-// One row = one life lost on a given day. Unique (participant, day) makes
-// settlement idempotent: a participant can lose at most one life per day,
-// no matter how many times the cron runs.
+// One row = one life event for a pick group. Unique (participant, groupKey)
+// makes settlement idempotent: a participant can lose at most one life per
+// group, no matter how many times the cron runs.
 export const lifeLosses = pgTable(
   'life_losses',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     participantId: uuid('participant_id').notNull().references(() => participants.id),
     matchDate: date('match_date').notNull(),
-    reason: text('reason', { enum: ['lost', 'no_pick'] }).notNull(),
+    groupKey: text('group_key').notNull(),
+    reason: text('reason', { enum: ['lost', 'no_pick', 'no_options'] }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    oneLossPerDay: unique('one_loss_per_day').on(t.participantId, t.matchDate),
+    oneLossPerGroup: unique('one_loss_per_group').on(t.participantId, t.groupKey),
   }),
 )

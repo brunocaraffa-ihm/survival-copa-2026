@@ -22,8 +22,14 @@ export async function createParticipant(name: string, username: string): Promise
   return { username: username.toLowerCase(), password }
 }
 
-export async function overrideResult(matchId: string, homeScore: number, awayScore: number): Promise<void> {
+export async function overrideResult(
+  matchId: string,
+  homeScore: number,
+  awayScore: number,
+  homePenalties: number | null = null,
+  awayPenalties: number | null = null,
+): Promise<void> {
   await requireAdmin()
-  await setMatchResult(matchId, homeScore, awayScore)
+  await setMatchResult(matchId, homeScore, awayScore, homePenalties, awayPenalties)
   revalidatePath('/admin')
 }

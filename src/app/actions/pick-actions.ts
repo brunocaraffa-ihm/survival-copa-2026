@@ -3,17 +3,16 @@
 import { revalidatePath } from 'next/cache'
 import { currentParticipant } from '@/lib/session'
 import { validatePick } from '@/lib/pick-validation'
-import { teamSurvives, phaseOf, type FinishedMatch } from '@/lib/rules'
-import { matchDayKey, earliestKickoff, isPastDeadline } from '@/lib/tz'
+import { teamSurvives, teamAdvanced, phaseOf } from '@/lib/rules'
+import { buildPickGroups } from '@/lib/groups'
+import { earliestKickoff, isPastDeadline, matchDayKey } from '@/lib/tz'
 import {
-  getMatchesByDate,
   getUsedTeamPhases,
   upsertPick,
   deletePick,
-  getMatchesFrom,
   getPicksFrom,
-  getPicksByDate,
-  getAllMatchDays,
+  getPicksByGroup,
+  getAllMatches,
   listParticipants,
 } from '@/db/queries'
 
@@ -21,62 +20,61 @@ function todayBrt(): string {
   return matchDayKey(new Date())
 }
 
+/** Load every match once and build the full list of pick groups. */
+async function loadGroups() {
+  const allMatches = await getAllMatches()
+  const matchById = new Map(allMatches.map((m) => [m.id, m]))
+  const groups = buildPickGroups(
+    allMatches.map((m) => ({
+      id: m.id, stage: m.stage, homeTeam: m.homeTeam, awayTeam: m.awayTeam,
+      utcKickoff: m.utcKickoff, matchDate: m.matchDate,
+    })),
+  )
+  return { matchById, groups }
+}
+
 /**
- * Full upcoming schedule (today onward), one entry per match day. A living
- * participant can set/change a pick for any day until that day's deadline.
- * Others' picks for a day are only revealed after that day's deadline.
+ * Full upcoming schedule (today onward), one entry per pick group. A living
+ * participant can set/change a pick for any group until that group's deadline.
+ * Others' picks for a group are only revealed after that group's deadline.
  */
 export async function getSchedule() {
   const me = await currentParticipant()
   if (!me) return null
 
   const today = todayBrt()
-  const upcomingMatches = await getMatchesFrom(today)
-  const upcomingPicks = await getPicksFrom(today)
+  const { matchById, groups } = await loadGroups()
+  const upcomingPicks = await getPicksFrom('2026-06-11')
   const usedTeamPhases = await getUsedTeamPhases(me.id)
   const teamsUsedByPhase = {
     group: usedTeamPhases.filter((u) => u.phase === 'group').map((u) => u.team),
     knockout: usedTeamPhases.filter((u) => u.phase === 'knockout').map((u) => u.team),
   }
-  const allDays = await getAllMatchDays()
   const now = new Date()
 
-  const byDate = new Map<string, typeof upcomingMatches>()
-  for (const m of upcomingMatches) {
-    const arr = byDate.get(m.matchDate) ?? []
-    arr.push(m)
-    byDate.set(m.matchDate, arr)
-  }
-
-  const days = [...byDate.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([date, dayMatches]) => {
-      const deadlineDate = earliestKickoff(dayMatches.map((m) => new Date(m.utcKickoff)))
+  const days = groups
+    .filter((g) => g.matchIds.some((id) => matchById.get(id)!.matchDate >= today))
+    .map((g) => {
+      const ms = g.matchIds.map((id) => matchById.get(id)!)
+      const deadlineDate = earliestKickoff(ms.map((m) => new Date(m.utcKickoff)))
       const deadlinePassed = deadlineDate ? isPastDeadline(now, deadlineDate) : false
-      const dayPicks = upcomingPicks.filter((p) => p.matchDate === date)
-      const myPick = dayPicks.find((p) => p.participantId === me.id)?.team ?? null
-      // visibility: others' picks only after this day's deadline
-      const visiblePicks = deadlinePassed ? dayPicks : dayPicks.filter((p) => p.participantId === me.id)
-      // each pickable team carries its phase, so the UI disables it against the
-      // right per-phase used-teams list (teams reset for the knockouts).
-      const pickableMap = new Map<string, 'group' | 'knockout'>()
-      for (const m of dayMatches) {
-        for (const t of [m.homeTeam, m.awayTeam]) {
-          if (t !== 'TBD') pickableMap.set(t, phaseOf(m.stage))
-        }
-      }
+      const groupPicks = upcomingPicks.filter((p) => p.groupKey === g.key)
+      const myPick = groupPicks.find((p) => p.participantId === me.id)?.team ?? null
+      const visiblePicks = deadlinePassed ? groupPicks : groupPicks.filter((p) => p.participantId === me.id)
+      const pickable = g.teams.map((team) => ({ team, phase: g.phase }))
+      const usedThisPhase = g.phase === 'knockout' ? teamsUsedByPhase.knockout : teamsUsedByPhase.group
+      const noOptions =
+        g.phase === 'knockout' && pickable.length > 0 && pickable.every((t) => usedThisPhase.includes(t.team) && t.team !== myPick)
       return {
-        date,
-        matchDayNumber: allDays.indexOf(date) + 1,
+        groupKey: g.key,
+        date: ms[0].matchDate,
+        label: g.label,
+        phase: g.phase,
         deadline: deadlineDate?.toISOString() ?? null,
         deadlinePassed,
-        matches: dayMatches.map((m) => ({
-          id: m.id,
-          homeTeam: m.homeTeam,
-          awayTeam: m.awayTeam,
-          utcKickoff: m.utcKickoff.toISOString(),
-        })),
-        pickable: [...pickableMap.entries()].map(([team, phase]) => ({ team, phase })),
+        matches: ms.map((m) => ({ id: m.id, homeTeam: m.homeTeam, awayTeam: m.awayTeam, utcKickoff: m.utcKickoff.toISOString() })),
+        pickable,
+        noOptions,
         myPick,
         picks: visiblePicks.map((p) => ({ participantId: p.participantId, team: p.team })),
       }
@@ -90,43 +88,41 @@ export async function submitPick(_prev: unknown, formData: FormData): Promise<{ 
   if (!me) return { error: 'Não autenticado' }
 
   const chosenTeam = String(formData.get('team') ?? '')
-  const date = String(formData.get('matchDate') ?? '')
-  if (!date) return { error: 'invalid_date' }
+  const groupKey = String(formData.get('groupKey') ?? '')
+  if (!groupKey) return { error: 'invalid_group' }
 
-  const dayMatches = await getMatchesByDate(date)
-  const deadline = earliestKickoff(dayMatches.map((m) => new Date(m.utcKickoff)))
+  const { matchById, groups } = await loadGroups()
+  const group = groups.find((g) => g.key === groupKey)
+  if (!group) return { error: 'invalid_group' }
+  const groupMatches = group.matchIds.map((id) => matchById.get(id)!)
+
+  const deadline = earliestKickoff(groupMatches.map((m) => new Date(m.utcKickoff)))
   const deadlinePassed = deadline ? isPastDeadline(new Date(), deadline) : true
-  const teamsPlayingThatDay = dayMatches.flatMap((m) => [m.homeTeam, m.awayTeam]).filter((t) => t !== 'TBD')
 
-  // The chosen team's match decides the phase; no-repeat is scoped to that phase.
-  const match = dayMatches.find((m) => m.homeTeam === chosenTeam || m.awayTeam === chosenTeam)
+  const match = groupMatches.find((m) => m.homeTeam === chosenTeam || m.awayTeam === chosenTeam)
   if (!match) return { error: 'not_playing_today' }
   const phase = phaseOf(match.stage)
 
-  // Exclude the team currently picked for THIS day — replacing it is allowed.
-  const myPickThisDay = (await getPicksByDate(date)).find((p) => p.participantId === me.id)?.team ?? null
+  const myPickThisGroup = (await getPicksByGroup(groupKey)).find((p) => p.participantId === me.id)?.team ?? null
   const teamsAlreadyUsed = (await getUsedTeamPhases(me.id))
-    .filter((u) => u.phase === phase && u.team !== myPickThisDay)
+    .filter((u) => u.phase === phase && u.team !== myPickThisGroup)
     .map((u) => u.team)
 
   const result = validatePick({
     isAlive: me.status === 'alive',
     deadlinePassed,
-    teamsPlayingToday: teamsPlayingThatDay,
+    teamsPlayingToday: group.teams,
     teamsAlreadyUsed,
     chosenTeam,
   })
   if (!result.ok) return { error: result.error }
 
   try {
-    await upsertPick({ participantId: me.id, matchDate: date, team: chosenTeam, matchId: match.id, phase })
+    await upsertPick({ participantId: me.id, matchDate: match.matchDate, groupKey, team: chosenTeam, matchId: match.id, phase })
   } catch (err) {
-    // DB-level guard: unique (participant, team) violation = team already used elsewhere.
     const e = err as { code?: string; cause?: { code?: string }; message?: string }
     const code = e.code ?? e.cause?.code
-    if (code === '23505' || /no_repeat_team|duplicate key/i.test(e.message ?? '')) {
-      return { error: 'team_already_used' }
-    }
+    if (code === '23505' || /no_repeat_team|duplicate key/i.test(e.message ?? '')) return { error: 'team_already_used' }
     throw err
   }
   revalidatePath('/')
@@ -136,83 +132,71 @@ export async function submitPick(_prev: unknown, formData: FormData): Promise<{ 
 export async function clearPick(formData: FormData): Promise<void> {
   const me = await currentParticipant()
   if (!me) return
+  const groupKey = String(formData.get('groupKey') ?? '')
+  if (!groupKey) return
 
-  const date = String(formData.get('matchDate') ?? '')
-  if (!date) return
+  const { matchById, groups } = await loadGroups()
+  const group = groups.find((g) => g.key === groupKey)
+  if (!group) return
+  const deadline = earliestKickoff(group.matchIds.map((id) => new Date(matchById.get(id)!.utcKickoff)))
+  if (deadline && isPastDeadline(new Date(), deadline)) return
 
-  const dayMatches = await getMatchesByDate(date)
-  const deadline = earliestKickoff(dayMatches.map((m) => new Date(m.utcKickoff)))
-  const deadlinePassed = deadline ? isPastDeadline(new Date(), deadline) : true
-  if (deadlinePassed) return
-
-  await deletePick(me.id, date)
+  await deletePick(me.id, groupKey)
   revalidatePath('/')
 }
 
 export type PickOutcome = 'survived' | 'eliminated' | 'pending' | 'no_pick'
 
 /**
- * Results view: for every match day up to today, who picked what and whether
- * they survived. A day's picks unlock only once its first game has started
- * (deadline passed) — before that, `rows` is null (locked).
+ * Results view: for every pick group up to today, who picked what and whether
+ * they survived/advanced. A group's picks unlock only once its first game has
+ * started (deadline passed) — before that, `rows` is null (locked).
  */
 export async function getResults() {
   const me = await currentParticipant()
   if (!me) return null
 
   const today = todayBrt()
-  const allMatches = await getMatchesFrom('2026-06-11')
+  const { matchById, groups } = await loadGroups()
   const allPicks = await getPicksFrom('2026-06-11')
-  const allDays = await getAllMatchDays()
   const everyone = await listParticipants()
   const now = new Date()
 
-  const byDate = new Map<string, typeof allMatches>()
-  for (const m of allMatches) {
-    const arr = byDate.get(m.matchDate) ?? []
-    arr.push(m)
-    byDate.set(m.matchDate, arr)
-  }
+  const days = groups
+    .filter((g) => g.matchIds.some((id) => matchById.get(id)!.matchDate <= today))
+    .sort((a, b) => b.order - a.order)
+    .map((g) => {
+      const ms = g.matchIds.map((id) => matchById.get(id)!)
+      const deadlineDate = earliestKickoff(ms.map((m) => new Date(m.utcKickoff)))
+      const deadlinePassed = deadlineDate ? isPastDeadline(now, deadlineDate) : false
+      const groupPicks = allPicks.filter((p) => p.groupKey === g.key)
 
-  // past + current match days, most recent first
-  const dates = [...byDate.keys()].filter((d) => d <= today).sort((a, b) => (a < b ? 1 : -1))
-
-  const days = dates.map((date) => {
-    const dayMatches = byDate.get(date)!
-    const deadlineDate = earliestKickoff(dayMatches.map((m) => new Date(m.utcKickoff)))
-    const deadlinePassed = deadlineDate ? isPastDeadline(now, deadlineDate) : false
-    const dayPicks = allPicks.filter((p) => p.matchDate === date)
-
-    const rows = !deadlinePassed
-      ? null
-      : everyone.map((p) => {
-          const pick = dayPicks.find((x) => x.participantId === p.id)
-          if (!pick) return { name: p.name, team: null, outcome: 'no_pick' as PickOutcome, matchLabel: null as string | null }
-          const m = dayMatches.find((x) => x.homeTeam === pick.team || x.awayTeam === pick.team)
-          let outcome: PickOutcome = 'pending'
-          let matchLabel: string | null = null
-          if (m && m.status === 'FINISHED' && m.homeScore !== null && m.awayScore !== null) {
-            const fm: FinishedMatch = {
-              homeTeam: m.homeTeam,
-              awayTeam: m.awayTeam,
-              homeScore: m.homeScore,
-              awayScore: m.awayScore,
-              status: 'FINISHED',
+      const rows = !deadlinePassed
+        ? null
+        : everyone.map((p) => {
+            const pick = groupPicks.find((x) => x.participantId === p.id)
+            if (!pick) return { name: p.name, team: null, outcome: 'no_pick' as PickOutcome, matchLabel: null as string | null }
+            const m = ms.find((x) => x.homeTeam === pick.team || x.awayTeam === pick.team)
+            let outcome: PickOutcome = 'pending'
+            let matchLabel: string | null = null
+            if (m && m.status === 'FINISHED' && m.homeScore !== null && m.awayScore !== null) {
+              if (g.phase === 'knockout') {
+                const adv = teamAdvanced(
+                  { homeTeam: m.homeTeam, awayTeam: m.awayTeam, homeScore: m.homeScore, awayScore: m.awayScore, homePenalties: m.homePenalties, awayPenalties: m.awayPenalties },
+                  pick.team,
+                )
+                outcome = adv === null ? 'pending' : adv ? 'survived' : 'eliminated'
+              } else {
+                outcome = teamSurvives({ homeTeam: m.homeTeam, awayTeam: m.awayTeam, homeScore: m.homeScore, awayScore: m.awayScore, status: 'FINISHED' }, pick.team) ? 'survived' : 'eliminated'
+              }
+              const pens = m.homePenalties !== null && m.awayPenalties !== null ? ` (${m.homePenalties}-${m.awayPenalties} pen)` : ''
+              matchLabel = `${m.homeTeam} ${m.homeScore}–${m.awayScore} ${m.awayTeam}${pens}`
             }
-            outcome = teamSurvives(fm, pick.team) ? 'survived' : 'eliminated'
-            matchLabel = `${m.homeTeam} ${m.homeScore}–${m.awayScore} ${m.awayTeam}`
-          }
-          return { name: p.name, team: pick.team, outcome, matchLabel }
-        })
+            return { name: p.name, team: pick.team, outcome, matchLabel }
+          })
 
-    return {
-      date,
-      matchDayNumber: allDays.indexOf(date) + 1,
-      deadline: deadlineDate?.toISOString() ?? null,
-      deadlinePassed,
-      rows,
-    }
-  })
+      return { groupKey: g.key, label: g.label, phase: g.phase, deadline: deadlineDate?.toISOString() ?? null, deadlinePassed, rows }
+    })
 
   return { days }
 }
