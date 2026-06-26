@@ -87,16 +87,19 @@ export async function upsertMatch(m: {
   awayTeam: string
   homeScore: number | null
   awayScore: number | null
+  homePenalties?: number | null
+  awayPenalties?: number | null
   status: 'SCHEDULED' | 'IN_PLAY' | 'FINISHED'
 }) {
+  const row = { ...m, homePenalties: m.homePenalties ?? null, awayPenalties: m.awayPenalties ?? null }
   if (m.externalId) {
     const existing = await db.select().from(matches).where(eq(matches.externalId, m.externalId)).limit(1)
     if (existing[0]) {
-      await db.update(matches).set(m).where(eq(matches.externalId, m.externalId))
+      await db.update(matches).set(row).where(eq(matches.externalId, m.externalId))
       return
     }
   }
-  await db.insert(matches).values(m)
+  await db.insert(matches).values(row)
 }
 
 export async function setMatchResult(
