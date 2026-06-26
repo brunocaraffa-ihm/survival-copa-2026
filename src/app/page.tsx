@@ -100,9 +100,12 @@ export default async function Dashboard() {
         Suas vidas: {hearts(meStanding.lives)} <span className="text-sm text-gray-600">({meStanding.lives}/{STARTING_LIVES})</span>
       </p>
 
-      <p className="mb-4 text-center">
+      <p className="mb-4 flex flex-col gap-1 text-center">
         <Link href="/resultados" className="text-sm font-medium text-blue-600 underline">
           📊 Ver palpites de todos &amp; resultados →
+        </Link>
+        <Link href="/chaveamento" className="text-sm font-medium text-blue-600 underline">
+          🗺️ Ver prévia do chaveamento →
         </Link>
       </p>
 
