@@ -56,4 +56,11 @@ describe('mapApiMatch penalties', () => {
     expect(m.homePenalties).toBeNull()
     expect(m.awayPenalties).toBeNull()
   })
+  it('handles a finished match whose score omits the penalties object', () => {
+    const m = mapApiMatch(apiMatch({ status: 'FINISHED', score: { duration: 'REGULAR', fullTime: { home: 2, away: 0 } } }))
+    expect(m.homeScore).toBe(2)
+    expect(m.awayScore).toBe(0)
+    expect(m.homePenalties).toBeNull()
+    expect(m.awayPenalties).toBeNull()
+  })
 })

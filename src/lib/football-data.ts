@@ -8,7 +8,7 @@ export type ApiMatch = {
   score: {
     duration: string
     fullTime: { home: number | null; away: number | null }
-    penalties: { home: number | null; away: number | null }
+    penalties?: { home: number | null; away: number | null }
   }
 }
 
@@ -46,8 +46,8 @@ export function mapApiMatch(m: ApiMatch): MappedMatch {
     awayTeam: m.awayTeam.name ?? 'TBD',
     homeScore: status === 'FINISHED' ? m.score.fullTime.home : null,
     awayScore: status === 'FINISHED' ? m.score.fullTime.away : null,
-    homePenalties: status === 'FINISHED' ? m.score.penalties.home : null,
-    awayPenalties: status === 'FINISHED' ? m.score.penalties.away : null,
+    homePenalties: status === 'FINISHED' ? (m.score.penalties?.home ?? null) : null,
+    awayPenalties: status === 'FINISHED' ? (m.score.penalties?.away ?? null) : null,
   }
 }
 
