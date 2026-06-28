@@ -1,6 +1,7 @@
 import { and, eq, gte } from 'drizzle-orm'
 import { db } from './client'
 import { participants, matches, picks, lifeLosses } from './schema'
+import { monotonicMatchMerge } from '@/lib/match-merge'
 
 export async function getParticipantByUsername(username: string) {
   const rows = await db.select().from(participants).where(eq(participants.username, username)).limit(1)
@@ -80,7 +81,8 @@ export async function upsertMatch(m: {
   if (m.externalId) {
     const existing = await db.select().from(matches).where(eq(matches.externalId, m.externalId)).limit(1)
     if (existing[0]) {
-      await db.update(matches).set(row).where(eq(matches.externalId, m.externalId))
+      const merged = monotonicMatchMerge(existing[0], row)
+      await db.update(matches).set(merged).where(eq(matches.externalId, m.externalId))
       return
     }
   }
